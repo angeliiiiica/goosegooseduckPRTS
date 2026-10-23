@@ -34,6 +34,11 @@ const server = http.createServer((req, res) => {
     res.writeHead(400).end('bad request');
     return;
   }
+  // a NUL byte (%00) makes fs.stat throw synchronously, which would kill the server
+  if (urlPath.includes('\0')) {
+    res.writeHead(400).end('bad request');
+    return;
+  }
   if (urlPath.endsWith('/')) urlPath += 'index.html';
   const file = path.normalize(path.join(ROOT, urlPath));
   if (!file.startsWith(ROOT + path.sep)) {
@@ -54,7 +59,10 @@ const server = http.createServer((req, res) => {
       'Cache-Control': isVendor ? 'public, max-age=86400' : 'no-cache',
     });
     if (req.method === 'HEAD') return res.end();
-    fs.createReadStream(file).pipe(res);
+    const stream = fs.createReadStream(file);
+    // file removed or locked after stat: headers are already sent, so just drop the response
+    stream.on('error', () => res.destroy());
+    stream.pipe(res);
   });
 });
 

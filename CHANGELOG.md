@@ -1,5 +1,55 @@
 # Update log / 更新日志
 
+## v1.2.3 (2026-10-23)
+
+### English
+
+A bug-fix release. Saved games and screenshots are safer, and several small annoyances are gone.
+
+**Your work is safer.**
+- Having PRTS open in two tabs no longer loses work. Before, closing an old forgotten tab could overwrite newer work, and the screenshots of those conferences were then deleted. Tabs now stay in sync.
+- Undo right after an import no longer loses the conference's screenshot. **Update C#** keeps the previous screenshot, so undo brings it back.
+- Loading a damaged or hand-edited JSON is refused and your current game is kept, instead of breaking the app on every reload.
+- Loading a JSON or uploading a map no longer hangs when the browser storage is full.
+
+**Security.** A crafted save file could no longer run code in the page, and the local server no longer crashes on a malformed address.
+
+**Fixes.**
+- Pressing Enter in a dialog (add player, rename conference, name map) now confirms it. In the import dialog it no longer closes the dialog and throws away the screenshot and names.
+- One import no longer merges two different new players into one, and the Match / New labels update as you edit names.
+- Switching conference, view or undoing in the middle of a drag no longer applies the drag to the wrong conference.
+- Changing, uploading or deleting a map can now be undone. Deleting a custom map goes back to the default map.
+- Clicking an unplaced player's token during playback no longer causes an error. Playback stops when you load a game, start a new one or delete a conference.
+- Shift-click with the path tool no longer snaps a token back.
+- The Conference tab shows renamed players right away, and renamed conferences update in the roster.
+- Deleting a conference no longer gives the next one a duplicate label.
+- "Zoom out" never zooms in on very large maps.
+- Name reading recovers after a slow start instead of staying broken.
+
+### 中文
+
+本次为修复版本：保存的对局和截图更安全，并修正了若干小问题。
+
+**更安全地保存。**
+- 同时在两个标签页打开 PRTS 不会再丢失进度。以前关闭一个被遗忘的旧标签页可能覆盖较新的进度，相关会议的截图也会被删除。现在各标签页会保持同步。
+- 导入后立即撤销不会再丢失该会议的截图。**更新 C#** 会保留之前的截图，撤销即可恢复。
+- 载入损坏或手动修改过的 JSON 时会被拒绝并保留当前对局，不会再导致每次刷新都出错。
+- 浏览器存储已满时，载入 JSON 或上传地图不会再卡住。
+
+**安全。** 精心构造的存档文件无法再在页面中执行代码；本地服务器遇到异常地址也不会再崩溃。
+
+**修复。**
+- 在对话框（添加玩家、重命名会议、命名地图）中按回车现在会确认。在导入对话框中按回车不会再关闭对话框并丢弃截图和名字。
+- 一次导入不会再把两个不同的新玩家合并成一个，编辑名字时“匹配 / 新建”标签会随之更新。
+- 拖动过程中切换会议、视图或撤销，不会再把拖动应用到错误的会议上。
+- 更换、上传或删除地图现在可以撤销。删除自定义地图后会回到默认地图。
+- 回放时点击未放置玩家的棋子不会再出错。载入对局、新建对局或删除会议时会停止回放。
+- 使用路线工具按住 Shift 单击不会再让棋子跳回。
+- 会议页会立即显示改名后的玩家，会议改名后名单也会同步更新。
+- 删除会议后，下一个会议不会再出现重复的编号。
+- 在很大的地图上，“缩小”不会再变成放大。
+- 名字识别启动较慢时会自动恢复，不会一直失败。
+
 ## v1.2.1 (2026-10-22)
 
 ### English

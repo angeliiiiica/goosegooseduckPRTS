@@ -151,7 +151,7 @@
         <div class="seg lang-seg" role="group" data-i18n-title="top.lang.title" title="Language / 语言">
           <button type="button" data-lang="en" lang="en">EN</button><button type="button" data-lang="zh" lang="zh-CN">中文</button>
         </div>
-        <button value="cancel" class="icon-btn" data-i18n-title="dlg.close" title="Close">✕</button>
+        <button type="button" data-close class="icon-btn" data-i18n-title="dlg.close" title="Close">✕</button>
       </div>
     </header>
     <div class="dlg-body import-body">
@@ -180,7 +180,7 @@
     <footer class="dlg-foot">
       <span class="muted" id="importHint" data-i18n-html="import.hint.html">Names are editable. <b>New conference</b> = next meeting: empty board + this screenshot.</span>
       <div class="spacer"></div>
-      <button value="cancel" class="btn" data-i18n="dlg.cancel">Cancel</button>
+      <button type="button" data-close class="btn" data-i18n="dlg.cancel">Cancel</button>
       <button type="button" id="importNew" class="btn" data-i18n="import.newGame" disabled>Start new game</button>
       <button type="button" id="importUpdate" class="btn" disabled>Update this conference</button>
       <button type="button" id="importNext" class="btn primary" disabled>New conference</button>
@@ -198,7 +198,7 @@
     </div>
     <footer class="dlg-foot">
       <div class="spacer"></div>
-      <button value="cancel" class="btn" data-i18n="dlg.cancel">Cancel</button>
+      <button type="button" data-close class="btn" data-i18n="dlg.cancel">Cancel</button>
       <button value="ok" id="promptOk" class="btn primary" data-i18n="dlg.ok">OK</button>
     </footer>
   </form>

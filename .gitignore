@@ -3,3 +3,13 @@
 Screenshot*.png
 2620700282_preview_*
 CLAUDE.md
+
+# local / tooling guard
+.claude/
+CLAUDE.local.md
+node_modules/
+.env
+.env.*
+*.log
+Thumbs.db
+desktop.ini
