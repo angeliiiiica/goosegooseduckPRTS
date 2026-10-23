@@ -1,5 +1,35 @@
 # Update log / 更新日志
 
+## v1.2.1 (2026-10-22)
+
+### English
+
+**New Basement map.** "Basement Map" is replaced by **Basement**, a cleaner, sharper map from the 鹅鸭杀 BWIKI. It is now the default map for a new game. Room names on the image are in Chinese.
+- Games saved on the old Basement Map open on the new one. Positions, paths, drawings, pins and notes are moved to match it.
+
+**New: map points.** On Basement, the **Map points** panel at the bottom right of the board shows the map's fixed spots, taken from the BWIKI interactive map:
+- goose tasks and sabotages (shown by default)
+- torches, spawns, food, hiding spots and peek points
+- drumstick disposal, the portal and the tribute spot
+
+Click a row to show or hide that group. Tick **Names** to write each point's name on the map. With the select tool, hover a point to see its name, room and how fast the task is. The points are included when you export a PNG.
+
+**New map: Goose Chapel (Chinese).** The Goose Chapel map from the BWIKI, with Chinese room names. It has no points yet.
+
+### 中文
+
+**新地下室地图。** “地下室地图”换成了来自鹅鸭杀 BWIKI 的 **地下室**，更清晰。新对局默认使用这张地图。图上的房间名为中文。
+- 在旧“地下室地图”上保存的对局会自动换到新地图，位置、路线、画笔、标记和文字都会对齐到新图上。
+
+**新增：地图点位。** 在地下室地图上，画板右下角的 **地图点位** 面板会显示地图上的固定点位，数据来自 BWIKI 互动地图：
+- 鹅任务和破坏（默认显示）
+- 火把、出生点、食物、藏身处和透视点
+- 鸡腿处理处、传送门和致敬点
+
+点击某一行即可显示或隐藏该类点位。勾选 **名称** 会在地图上标出每个点位的名称。使用移动工具时，把鼠标停在点位上可以看到名称、所在房间和任务快慢。导出 PNG 时会包含这些点位。
+
+**新地图：鹅教堂（中文）。** 来自 BWIKI 的鹅教堂地图，房间名为中文。暂时没有点位。
+
 ## v1.2.0 (2026-10-21)
 
 Based on suggestions from players. / 根据玩家的建议改进。
