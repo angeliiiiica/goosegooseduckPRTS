@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRTS</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2L30 16L16 30L2 16Z' fill='%23f5c400'/%3E%3Cpath d='M10 13h12M10 19h8' stroke='%2318191b' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="fileWarn" class="file-warn hidden" data-i18n-html="fileWarn.html">
+  This page was opened as a file, so reading names from screenshots can't work. Close it and launch <b>start.bat</b> (it opens http://localhost:7777).
+</div>
+<header id="topbar">
+  <div class="brand"><span class="brand-mark">PRTS</span><span class="brand-text"><span data-i18n="brand.sub">Goose Goose Duck</span><span class="brand-sub" data-i18n="brand.tag">Detective board</span></span></div>
+
+  <label class="field">
+    <span data-i18n="top.map">Map</span>
+    <select id="mapSelect"></select>
+  </label>
+  <button id="delMapBtn" class="icon-btn hidden" data-i18n-title="top.delMap.title" title="Delete this custom map">✕</button>
+
+  <div id="roundTabs" class="round-tabs"></div>
+
+  <div class="spacer"></div>
+
+  <div class="top-actions">
+    <div id="langSwitch" class="seg lang-seg" role="group" data-i18n-title="top.lang.title" title="Language / 语言">
+      <button type="button" data-lang="en" lang="en">EN</button><button type="button" data-lang="zh" lang="zh-CN">中文</button>
+    </div>
+    <button id="importBtn" class="btn primary" data-i18n="top.import" data-i18n-title="top.import.title" title="Import conference screenshot (or just Ctrl+V anywhere)">Import screenshot</button>
+    <div class="menu">
+      <button class="btn" id="menuBtn" data-i18n="top.menu">Game ▾</button>
+      <div class="menu-list hidden" id="menuList">
+        <button data-act="new" data-i18n="menu.new">New game…</button>
+        <button data-act="addPlayer" data-i18n="menu.addPlayer">Add player manually…</button>
+        <hr>
+        <button data-act="exportPng" data-i18n="menu.exportPng">Export board as PNG</button>
+        <button data-act="saveJson" data-i18n="menu.saveJson">Save game (.json)</button>
+        <button data-act="loadJson" data-i18n="menu.loadJson">Load game (.json)…</button>
+        <hr>
+        <button data-act="clearRound" data-i18n="menu.clearRound">Clear this conference's drawings</button>
+        <button data-act="unplaceAll" data-i18n="menu.unplaceAll">Unplace everyone (this conference)</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="layout">
+  <!-- Roster -->
+  <aside id="roster">
+    <div class="panel-cap" data-i18n="roster.cap">Roster</div>
+    <div id="summary" class="summary"></div>
+    <div id="rosterList" class="roster-list"></div>
+    <div class="roster-foot">
+      <button id="placeAllBtn" class="btn small" data-i18n="roster.placeAll" data-i18n-title="roster.placeAll.title" title="Put every unplaced player on the board">Place unplaced</button>
+    </div>
+  </aside>
+
+  <!-- Board -->
+  <section id="stage">
+    <svg id="board" xmlns="http://www.w3.org/2000/svg" tabindex="0">
+      <defs id="defs"></defs>
+      <g id="vp">
+        <g id="lMap"></g>
+        <g id="lNet"></g>
+        <g id="lStrokes"></g>
+        <g id="lLinks"></g>
+        <g id="lPaths"></g>
+        <g id="lPins"></g>
+        <g id="lTexts"></g>
+        <g id="lTokens"></g>
+        <g id="lTemp" pointer-events="none"></g>
+      </g>
+    </svg>
+
+    <div id="toolbar" class="floating">
+      <button data-tool="select" data-i18n-title="tool.select.title" title="Select / move (V)">✥<em>V</em></button>
+      <button data-tool="pen" data-i18n-title="tool.pen.title" title="Pen (P)">✎<em>P</em></button>
+      <button data-tool="path" data-i18n-title="tool.path.title" title="Path (R): drag a player along the route they walked">〰<em>R</em></button>
+      <button data-tool="link" data-i18n-title="tool.link.title" title="Link two players (L) — drag from one token to another">⇄<em>L</em></button>
+      <button data-tool="pin" data-i18n-title="tool.pin.title" title="Drop body / event pin (B)">✚<em>B</em></button>
+      <button data-tool="text" data-i18n-title="tool.text.title" title="Text note (T)">T<em>T</em></button>
+      <button data-tool="eraser" data-i18n-title="tool.eraser.title" title="Eraser (E) — click or drag over drawings">⌫<em>E</em></button>
+      <div class="sep"></div>
+      <div id="toolOpts" class="tool-opts"></div>
+    </div>
+
+    <div id="viewSwitch" class="floating" role="group" data-i18n-title="view.switch.title" title="Map or relationship network (N)">
+      <button type="button" data-view="map" data-i18n="view.map">Map</button>
+      <button type="button" data-view="net" data-i18n="view.net">Network</button>
+      <button type="button" id="netReset" class="hidden" data-i18n="net.reset" data-i18n-title="net.reset.title" title="Put everyone back on the ring">Reset layout</button>
+    </div>
+
+    <div id="viewbar" class="floating">
+      <button id="zoomOut" data-i18n-title="view.zoomOut" title="Zoom out">−</button>
+      <button id="zoomFit" data-i18n-title="view.fit" title="Fit map (F)">⤢</button>
+      <button id="zoomIn" data-i18n-title="view.zoomIn" title="Zoom in">+</button>
+      <div class="sep"></div>
+      <label data-i18n-title="view.paths.title" title="Show movement paths drawn in this conference"><input type="checkbox" id="optPaths"> <span data-i18n="view.paths">Paths</span></label>
+      <label data-i18n-title="view.votes.title" title="Show votes received on tokens"><input type="checkbox" id="optVotes"> <span data-i18n="view.votes">Votes</span></label>
+      <label data-i18n-title="view.claims.title" title="Show role claims above tokens"><input type="checkbox" id="optClaims"> <span data-i18n="view.claims">Claims</span></label>
+      <label data-i18n-title="view.dead.title" title="Show dead players on the board"><input type="checkbox" id="optDead"> <span data-i18n="view.dead">Dead</span></label>
+      <label class="range" data-i18n-title="view.size.title" title="Token size"><span data-i18n="view.size">Size</span> <input type="range" id="optSize" min="12" max="48" step="1"></label>
+    </div>
+
+    <div id="playbar" class="floating hidden">
+      <button id="playBtn" data-i18n-title="play.play" title="Play everyone's path (G)">▶</button>
+      <input type="range" id="playScrub" min="0" max="1000" value="0" data-i18n-title="play.scrub" title="Scrub through the movement">
+      <span id="playPct" class="play-pct"></span>
+      <select id="playSpeed" data-i18n-title="play.speed" title="Playback speed">
+        <option value="0.5">0.5×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option>
+      </select>
+      <select id="playMode" data-i18n-title="play.mode" title="Timing">
+        <option value="sync" data-i18n="play.mode.sync">Start &amp; finish together</option>
+        <option value="speed" data-i18n="play.mode.speed">Same walking speed</option>
+      </select>
+      <button id="playStop" data-i18n-title="play.stop" title="Stop: back to final positions">■</button>
+    </div>
+
+    <div id="dropHint" class="drop-hint hidden" data-i18n="stage.drop">Drop screenshot to import</div>
+    <div id="toast" class="toast hidden"></div>
+  </section>
+
+  <!-- Inspector -->
+  <aside id="side">
+    <nav class="tabs">
+      <button data-tab="inspect" class="active" data-i18n="tab.inspect">Inspect</button>
+      <button data-tab="round" data-i18n="tab.round">Conference</button>
+    </nav>
+    <div id="tabInspect" class="tab-body"></div>
+    <div id="tabRound" class="tab-body hidden"></div>
+  </aside>
+</main>
+
+<!-- Import dialog -->
+<dialog id="importDlg">
+  <form method="dialog" class="dlg">
+    <header class="dlg-head">
+      <h2 data-i18n="import.title">Import conference screenshot</h2>
+      <div class="row">
+        <!-- the top-bar switch is unreachable while this modal is open -->
+        <div class="seg lang-seg" role="group" data-i18n-title="top.lang.title" title="Language / 语言">
+          <button type="button" data-lang="en" lang="en">EN</button><button type="button" data-lang="zh" lang="zh-CN">中文</button>
+        </div>
+        <button value="cancel" class="icon-btn" data-i18n-title="dlg.close" title="Close">✕</button>
+      </div>
+    </header>
+    <div class="dlg-body import-body">
+      <div class="import-left">
+        <div id="importDrop" class="import-drop">
+          <canvas id="importCanvas"></canvas>
+          <div id="importEmpty" class="import-empty">
+            <div><span data-i18n="import.empty.pre">Paste (Ctrl+V), drop, or </span><label class="link"><span data-i18n="import.browse">browse</span><input type="file" id="importFile" accept="image/*" hidden></label><span data-i18n="import.empty.post"> for a meeting screenshot.</span></div>
+          </div>
+        </div>
+        <details class="calib">
+          <summary><span data-i18n="import.calib">Calibration</span> <small data-i18n="import.calibNote">(only if boxes don't line up with the cards)</small></summary>
+          <div class="calib-grid">
+            <label><span data-i18n="import.calX">Offset X</span> <input type="range" id="calX" min="-300" max="300" step="1"><output id="calXv"></output></label>
+            <label><span data-i18n="import.calY">Offset Y</span> <input type="range" id="calY" min="-300" max="300" step="1"><output id="calYv"></output></label>
+            <label><span data-i18n="import.calS">Scale</span> <input type="range" id="calS" min="0.7" max="1.3" step="0.005"><output id="calSv"></output></label>
+            <button type="button" id="calReset" class="btn small" data-i18n="import.calReset">Reset</button>
+          </div>
+        </details>
+      </div>
+      <div class="import-right">
+        <div id="importStatus" class="import-status" data-i18n="import.none">No screenshot yet.</div>
+        <div id="importRows" class="import-rows"></div>
+      </div>
+    </div>
+    <footer class="dlg-foot">
+      <span class="muted" id="importHint" data-i18n-html="import.hint.html">Names are editable. <b>New conference</b> = next meeting: empty board + this screenshot.</span>
+      <div class="spacer"></div>
+      <button value="cancel" class="btn" data-i18n="dlg.cancel">Cancel</button>
+      <button type="button" id="importNew" class="btn" data-i18n="import.newGame" disabled>Start new game</button>
+      <button type="button" id="importUpdate" class="btn" disabled>Update this conference</button>
+      <button type="button" id="importNext" class="btn primary" disabled>New conference</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- Generic prompt dialog -->
+<dialog id="promptDlg">
+  <form method="dialog" class="dlg small">
+    <header class="dlg-head"><h2 id="promptTitle" data-i18n="prompt.title">Prompt</h2></header>
+    <div class="dlg-body">
+      <p id="promptMsg" class="muted"></p>
+      <input id="promptInput" type="text" autocomplete="off">
+    </div>
+    <footer class="dlg-foot">
+      <div class="spacer"></div>
+      <button value="cancel" class="btn" data-i18n="dlg.cancel">Cancel</button>
+      <button value="ok" id="promptOk" class="btn primary" data-i18n="dlg.ok">OK</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog id="shotDlg" class="shot-dlg">
+  <div class="dlg-head"><h2 id="shotTitle" data-i18n="shot.title">Screenshot</h2><span class="muted" data-i18n="shot.close">click anywhere to close</span></div>
+  <img id="shotImg" data-i18n-alt="conf.shotAlt" alt="Conference screenshot">
+</dialog>
+
+<input type="file" id="jsonFile" accept=".json,application/json" hidden>
+<input type="file" id="mapFile" accept="image/*" hidden>
+
+<!-- filled from i18n.js for the current language -->
+<datalist id="roleList"></datalist>
+
+<script src="vendor/tesseract/tesseract.min.js"></script>
+<script src="parse.js"></script>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "prts",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Local detective board for Goose Goose Duck meetings",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

@@ -1,0 +1,717 @@
+/* PRTS — UI strings (English / Simplified Chinese) and the t() helper. */
+(() => {
+  'use strict';
+
+  // Keys are stable and dotted. Values may contain {name} placeholders.
+  // Keys ending in .html are trusted markup (only <b>, <kbd>, <br>); callers escape user data passed in.
+  // Plurals: key.one / key.other, looked up through tn(); Chinese only needs .other.
+  const en = {
+    'app.title': 'PRTS',
+    'brand.sub': 'Goose Goose Duck',
+    'brand.tag': 'Detective board',
+    'roster.cap': 'Roster',
+    'fileWarn.html': 'This page was opened as a file, so reading names from screenshots can\'t work. Close it and launch <b>start.bat</b> (it opens http://localhost:7777).',
+
+    // top bar & menu
+    'top.map': 'Map',
+    'top.delMap.title': 'Delete this custom map',
+    'top.lang.title': 'Language / 语言',
+    'top.import': 'Import screenshot',
+    'top.import.title': 'Import conference screenshot (or just Ctrl+V anywhere)',
+    'top.menu': 'Game ▾',
+    'top.round.title': 'Double-click to rename',
+    'menu.new': 'New game…',
+    'menu.addPlayer': 'Add player manually…',
+    'menu.exportPng': 'Export board as PNG',
+    'menu.saveJson': 'Save game (.json)',
+    'menu.loadJson': 'Load game (.json)…',
+    'menu.clearRound': 'Clear this conference\'s drawings',
+    'menu.unplaceAll': 'Unplace everyone (this conference)',
+
+    // maps (built-in only; custom map names are user data)
+    'map.basement-map': 'Basement Map',
+    'map.basement': 'Basement (Darkout)',
+    'map.ancient-sands': 'Ancient Sands',
+    'map.goosechapel': 'Goosechapel (Prison Key)',
+    'map.goosechapel-sewer': 'Goosechapel (Sewer)',
+    'map.blank': 'Blank board',
+    'map.upload': '＋ Upload map image…',
+    'map.customDefault': 'Custom map',
+    'map.sessionOnly': '{name} (session only)',
+    'map.nameTitle': 'Name this map',
+    'map.nameMsg': 'Shown in the map list.',
+    'map.confirmDelete': 'Delete custom map "{name}"?',
+
+    // labels
+    'tag.unknown': 'Unknown',
+    'tag.goose': 'Goose-lean',
+    'tag.cleared': 'Cleared',
+    'tag.sus': 'Sus',
+    'tag.duck': 'Duck',
+    'tag.neutral': 'Neutral',
+    'status.alive': 'Alive',
+    'status.dead': 'Dead',
+    'status.ejected': 'Ejected',
+    'link.with': 'Together',
+    'link.vouch': 'Vouches',
+    'link.accuse': 'Accuses',
+    'link.saw': 'Saw',
+    'link.follow': 'Followed',
+    'link.kill': 'Killed',
+    'pin.body': 'Body',
+    'pin.event': 'Event',
+
+    // toolbar, tool options, view bar
+    'tool.select.title': 'Select / move (V)',
+    'tool.pen.title': 'Pen (P)',
+    'tool.path.title': 'Path (R): drag a player along the route they walked',
+    'tool.link.title': 'Link two players (L) — drag from one token to another',
+    'tool.pin.title': 'Drop body / event pin (B)',
+    'tool.text.title': 'Text note (T)',
+    'tool.eraser.title': 'Eraser (E) — click or drag over drawings',
+    'hint.select': 'drag tokens · drag empty space to pan · wheel to zoom',
+    'hint.link': 'drag token → token',
+    'hint.eraser': 'click or drag over drawings, paths, links, pins',
+    'hint.eraserNet': 'click or drag over relations to remove them',
+    'hint.selectNet': 'everyone sits on a ring · drag to arrange · Link tool (L) draws relations',
+    'hint.path': 'drag a player along their route · Shift+drag extends it · with a player selected, start anywhere',
+    'view.zoomOut': 'Zoom out',
+    'view.fit': 'Fit map (F)',
+    'view.zoomIn': 'Zoom in',
+    'view.paths': 'Paths',
+    'view.paths.title': 'Show movement paths drawn in this conference',
+    'view.votes': 'Votes',
+    'view.votes.title': 'Show votes received on tokens',
+    'view.claims': 'Claims',
+    'view.claims.title': 'Show role claims above tokens',
+    'view.dead': 'Dead',
+    'view.dead.title': 'Show dead players on the board',
+    'view.size': 'Size',
+    'view.size.title': 'Token size',
+    'view.map': 'Map',
+    'view.net': 'Network',
+    'view.switch.title': 'Map or relationship network (N)',
+    'net.reset': 'Reset layout',
+    'net.reset.title': 'Put everyone back on the ring',
+
+    // playback
+    'play.play': 'Play everyone\'s path (G)',
+    'play.pause': 'Pause (G)',
+    'play.scrub': 'Scrub through the movement',
+    'play.speed': 'Playback speed',
+    'play.mode': 'Timing',
+    'play.mode.sync': 'Start & finish together',
+    'play.mode.speed': 'Same walking speed',
+    'play.stop': 'Stop: back to final positions',
+    'play.paths.one': '{n} path',
+    'play.paths.other': '{n} paths',
+
+    // stage
+    'stage.drop': 'Drop screenshot to import',
+    'text.default': 'Note',
+
+    // roster
+    'roster.placeAll': 'Place unplaced',
+    'roster.placeAll.title': 'Put every unplaced player on the board',
+    'roster.alive.html': 'Alive <b>{alive}</b>/{total}',
+    'roster.noGame': 'No game loaded',
+    'roster.empty.html': 'No players yet.<br><br>Paste a meeting screenshot with <b>Ctrl+V</b>, drop one on the page, or use <b>Import screenshot</b>.',
+    'roster.subDead': 'dead',
+    'roster.subEjected': 'ejected',
+    'roster.item.title': 'Drag onto the map · double-click to place/center',
+    'roster.cycle': '{tag} — click to cycle',
+    'roster.onMap': 'on map',
+    'roster.setStatus': 'Mark {status} (this conference)',
+    'roster.setAlive': 'Mark alive (all conferences)',
+    'roster.groupAlive': 'Alive · {n}',
+    'roster.groupDead': 'Dead · {n}',
+
+    // side tabs
+    'tab.inspect': 'Inspect',
+    'tab.round': 'Conference',
+
+    // history lines
+    'hist.onMap': 'on map',
+    'hist.path': 'path drawn',
+    'hist.gotVotes.one': 'got {n} vote',
+    'hist.gotVotes.other': 'got {n} votes',
+    'hist.event': 'event: {title}',
+    'list.sep': ', ',
+    'hist.with': 'with {name}',
+    'hist.vouch': 'vouches {name}',
+    'hist.vouchBy': 'vouched by {name}',
+    'hist.accuse': 'accuses {name}',
+    'hist.accuseBy': 'accused by {name}',
+    'hist.saw': 'saw {name}',
+    'hist.sawBy': 'seen by {name}',
+    'hist.follow': 'followed {name}',
+    'hist.followBy': 'followed by {name}',
+    'hist.kill': 'killed {name}',
+    'hist.killBy': 'killed by {name}',
+    'hist.dead': 'dead',
+    'hist.ejected': 'ejected',
+    'hist.none': 'Nothing recorded yet.',
+
+    // inspector
+    'ins.onMap': 'On map in {label}',
+    'ins.notPlaced': 'Not placed in {label}',
+    'ins.read': 'Read',
+    'ins.status': 'Status',
+    'ins.statusHint': '(D cycles)',
+    'ins.since': 'Since',
+    'ins.claim': 'Role claim',
+    'ins.claim.ph': 'e.g. Sheriff, Canadian…',
+    'ins.notes': 'Notes',
+    'ins.notes.ph': 'Alibis, sightings, voice tells, what they said in meeting…',
+    'ins.history': 'History',
+    'ins.unplace': 'Remove from map',
+    'ins.place': 'Place at view center',
+    'ins.clearPath': 'Clear path',
+    'ins.icon': 'Change icon…',
+    'ins.deletePlayer': 'Delete player',
+    'ins.pinTitle': '{kind} pin',
+    'ins.victim': 'Victim',
+    'ins.victimNone': '— none —',
+    'ins.label': 'Label',
+    'ins.pinLabel.ph': 'e.g. who found it, vent nearby',
+    'ins.deletePin': 'Delete pin',
+    'ins.evWhat': 'What happened',
+    'ins.evWhat.ph': 'e.g. lights sabotaged, door locked, saw someone vent',
+    'ins.evWhen': 'When',
+    'ins.evWho': 'Players involved',
+    'ins.evWhoHint': '(click to toggle)',
+    'ins.evDetails': 'Details',
+    'ins.evDetails.ph': 'What exactly happened, who said so, how sure you are…',
+    'time.early': 'Early',
+    'time.mid': 'Mid',
+    'time.late': 'Late',
+    'time.toggle': 'Click again to clear',
+    'time.clock': 'Time in the round, in 30-second spans',
+    'time.clockNone': '— 30 s span —',
+    'time.unknown': 'Time unknown',
+    'ins.textNote': 'Text note',
+    'ins.size': 'Size',
+    'ins.color': 'Color',
+    'ins.deleteText': 'Delete text',
+    'ins.link': 'Link',
+    'ins.note': 'Note',
+    'ins.linkNote.ph': 'e.g. in Laboratory together',
+    'ins.swap': 'Swap direction',
+    'ins.deleteLink': 'Delete link',
+    'ins.drawing': 'Drawing',
+    'ins.deleteDrawing': 'Delete drawing',
+
+    // help
+    'help.quick': 'Quick start',
+    'help.quick.html':
+      '1. In a meeting, screenshot and <kbd>Ctrl</kbd>+<kbd>V</kbd> here (or drop the file).<br>' +
+      '2. Check the names, then <b>Start new game</b>. Re-importing during the same meeting: <b>Update</b> picks up new deaths.<br>' +
+      '3. Drag players from the list onto the map where they were seen.<br>' +
+      '4. Next meeting: import that meeting\'s screenshot and pick <b>New conference</b>. It starts on an empty board; nothing carries over from earlier conferences. Each one keeps its own layout and screenshot (tabs at the top, <kbd>[</kbd> <kbd>]</kbd> to flip).<br>' +
+      '5. Path tool (<kbd>R</kbd>): drag each player along the route they walked. Press play to watch everyone move at once.<br>' +
+      '6. Tag reads, record claims, link alibis, accusations and kills. Log how many votes each player got in the <b>Conference</b> tab.<br>' +
+      '7. <b>Network</b> (<kbd>N</kbd>): everyone on a ring with this conference\'s relations, for when tokens are too bunched up on the map to read.<br>' +
+      '8. Event pins record what happened, when and who was involved; the <b>Conference</b> tab lists them as a timeline.',
+    'help.keys': 'Keys',
+    'help.keys.html':
+      '<kbd>V</kbd> move · <kbd>R</kbd> path · <kbd>P</kbd> pen · <kbd>L</kbd> link · <kbd>B</kbd> pin · <kbd>T</kbd> text · <kbd>E</kbd> eraser<br>' +
+      '<kbd>G</kbd> play / pause everyone\'s paths · <kbd>N</kbd> map / network<br>' +
+      '<kbd>1</kbd>–<kbd>6</kbd> tag selected · <kbd>D</kbd> cycle alive/dead/ejected<br>' +
+      '<kbd>Del</kbd> remove selected · <kbd>F</kbd> fit · <kbd>[</kbd> <kbd>]</kbd> prev/next conference<br>' +
+      '<kbd>Space</kbd>+drag or middle-drag to pan · wheel to zoom<br>' +
+      '<kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo · <kbd>Esc</kbd> deselect',
+    'help.legend': 'Legend',
+    'help.vote': 'Votes received this conference',
+
+    // conference panel
+    'conf.prev': '◀ Previous',
+    'conf.next': 'Next ▶',
+    'conf.shotAlt': 'Conference screenshot',
+    'conf.shotEnlarge': 'Click to enlarge',
+    'conf.noShot.html': 'No screenshot saved for this conference. Import one and pick <b>Update</b> to attach it.',
+    'conf.shotMissing': 'Screenshot missing.',
+    'conf.votes': 'Votes received',
+    'conf.voteHint': 'The game only shows how many votes each player got. Count them here.',
+    'conf.voteTotal': '{total} of {voters} votes recorded',
+    'conf.voteInc': 'One more vote',
+    'conf.voteDec': 'One fewer vote',
+    'conf.skip': 'Skip',
+    'conf.importFirst': 'Import players first.',
+    'conf.timeline': 'Event timeline',
+    'conf.noEvents': 'No events yet. Drop an event pin (B) on the map.',
+    'conf.eventUntitled': 'Untitled event',
+    'conf.deaths': 'Deaths this conference',
+    'conf.dead': 'Dead',
+    'conf.ejected': 'Ejected',
+    'conf.bodyPin': 'Body pin',
+    'conf.unknownVictim': 'unknown',
+    'conf.noneRecorded': 'None recorded.',
+    'conf.notes': 'Conference notes',
+    'conf.notes.ph': 'Who called the meeting, where the body was, timeline…',
+    'conf.clearVotes': 'Clear votes',
+    'conf.delete': 'Delete conference',
+    'conf.confirmDelete': 'Delete {label}, its screenshot and everything drawn in it?',
+    'conf.rename': 'Rename conference',
+
+    // screenshot viewer
+    'shot.title': 'Screenshot',
+    'shot.titleFor': '{label} conference screenshot',
+    'shot.close': 'click anywhere to close',
+    'shot.notFound': 'Screenshot not found',
+
+    // dialogs
+    'dlg.close': 'Close',
+    'dlg.cancel': 'Cancel',
+    'dlg.ok': 'OK',
+    'prompt.title': 'Prompt',
+
+    // import dialog
+    'import.title': 'Import conference screenshot',
+    'import.empty.pre': 'Paste (Ctrl+V), drop, or ',
+    'import.browse': 'browse',
+    'import.empty.post': ' for a meeting screenshot.',
+    'import.calib': 'Calibration',
+    'import.calibNote': '(only if boxes don\'t line up with the cards)',
+    'import.calX': 'Offset X',
+    'import.calY': 'Offset Y',
+    'import.calS': 'Scale',
+    'import.calReset': 'Reset',
+    'import.hint.html': 'Names are editable. <b>New conference</b> = next meeting: empty board + this screenshot.',
+    'import.newGame': 'Start new game',
+    'import.update': 'Update {label}',
+    'import.next': 'New conference ({label})',
+    'import.none': 'No screenshot yet.',
+    'import.badImage': 'Could not read that image.',
+    'import.noCards': 'No player cards found. Is this the meeting screen? Try the calibration sliders.',
+    'import.loading': 'Loading OCR engine…',
+    'import.needServer': 'Name reading needs the local server: close this tab and run start.bat. You can still type names (blank = P1, P2...).',
+    'import.ocrFailed': 'Name reading failed to load. Type the names (blank = P1, P2...) and continue.',
+    'import.reading': 'Reading names… {i}/{n}',
+    'import.found.one': 'Found {n} player, {dead} dead. Check names, then pick an action below.',
+    'import.found.other': 'Found {n} players, {dead} dead. Check names, then pick an action below.',
+    'import.row.include': 'Include',
+    'import.row.reading': 'reading…',
+    'import.row.typeNameBlank': 'type name (blank = P{n})',
+    'import.row.dead': 'dead',
+    'import.row.deadTitle': 'Dead in this screenshot',
+    'import.row.snapped': 'Snapped to a name seen before',
+    'import.row.ocr': 'OCR: {text}',
+    'import.row.match': '= {name}',
+    'import.row.new': 'new',
+    'import.confirmNew': 'Start a new game? The current board is replaced (Ctrl+Z still works).',
+
+    // confirms & prompts
+    'confirm.newGame': 'Start a new empty game? (Ctrl+Z still works)',
+    'confirm.deletePlayer': 'Delete {name} from this game entirely?',
+    'confirm.clearRound': 'Clear all drawings, paths, links, pins and notes on the map for {label}?',
+    'prompt.addPlayer': 'Add player',
+    'prompt.addPlayerMsg': 'Name as shown in game.',
+
+    // toasts
+    'toast.nothingUndo': 'Nothing to undo',
+    'toast.nothingRedo': 'Nothing to redo',
+    'toast.storageFull': 'Could not save — browser storage is full',
+    'toast.mapFailed': 'Map image failed to load: {name}',
+    'toast.mapSession': 'Could not store map permanently — kept for this session',
+    'toast.noPaths': 'No paths in this conference yet: use the Path tool (R)',
+    'toast.pathStart': 'Start the drag on a player, or select one in the list first',
+    'toast.linkRemoved': 'Removed "{type}" link',
+    'toast.linkAdded': '{a} → {type} → {b}',
+    'toast.allPlaced': 'Everyone is already on the board',
+    'toast.placed': 'Placed {n} — drag them where they were seen',
+    'toast.unplaced': 'Removed from board ({label} only)',
+    'toast.markedDead': '{name} marked dead',
+    'toast.statusAlive': '{name} is alive again',
+    'toast.statusOut': '{name}: {status} in {label}',
+    'toast.newGame.one': 'New game: {n} player',
+    'toast.newGame.other': 'New game: {n} players',
+    'toast.nextConf': '{label}: empty board, {died} newly dead{extra}. Drag players to where they are now.',
+    'toast.nextConfNew': ', {n} new',
+    'toast.updated': '{label} updated: {added} new, {died} newly dead',
+    'toast.loaded': 'Game loaded',
+    'toast.loadFailed': 'Could not load: {msg}',
+    'toast.notGame': 'not a game file',
+    'toast.badJson': 'not a valid JSON file',
+    'toast.pngFailed': 'PNG export failed',
+    'toast.saveFailed': 'Save failed',
+  };
+
+  const zh = {
+    'app.title': 'PRTS',
+    'brand.sub': '鹅鸭杀',
+    'brand.tag': '会议推理板',
+    'roster.cap': '玩家名单',
+    'fileWarn.html': '此页面是以本地文件方式打开的，无法从截图识别名字。请关闭它并运行 <b>start.bat</b>（会打开 http://localhost:7777）。',
+
+    'top.map': '地图',
+    'top.delMap.title': '删除这张自定义地图',
+    'top.lang.title': 'Language / 语言',
+    'top.import': '导入截图',
+    'top.import.title': '导入会议截图（也可以在任意位置直接 Ctrl+V）',
+    'top.menu': '对局 ▾',
+    'top.round.title': '双击重命名',
+    'menu.new': '新对局…',
+    'menu.addPlayer': '手动添加玩家…',
+    'menu.exportPng': '导出画板为 PNG',
+    'menu.saveJson': '保存对局（.json）',
+    'menu.loadJson': '载入对局（.json）…',
+    'menu.clearRound': '清除本场会议的绘制内容',
+    'menu.unplaceAll': '把所有人移出地图（本场会议）',
+
+    'map.basement-map': '地下室地图',
+    'map.basement': '地下室（停电）',
+    'map.ancient-sands': '古代沙漠',
+    'map.goosechapel': '鹅教堂（监狱钥匙）',
+    'map.goosechapel-sewer': '鹅教堂（下水道）',
+    'map.blank': '空白画板',
+    'map.upload': '＋ 上传地图图片…',
+    'map.customDefault': '自定义地图',
+    'map.sessionOnly': '{name}（仅本次会话）',
+    'map.nameTitle': '给地图命名',
+    'map.nameMsg': '会显示在地图列表中。',
+    'map.confirmDelete': '删除自定义地图「{name}」？',
+
+    'tag.unknown': '未知',
+    'tag.goose': '偏鹅',
+    'tag.cleared': '已洗白',
+    'tag.sus': '可疑',
+    'tag.duck': '鸭',
+    'tag.neutral': '中立',
+    'status.alive': '存活',
+    'status.dead': '死亡',
+    'status.ejected': '被投出',
+    'link.with': '同行',
+    'link.vouch': '担保',
+    'link.accuse': '指认',
+    'link.saw': '看见',
+    'link.follow': '跟随',
+    'link.kill': '击杀',
+    'pin.body': '尸体',
+    'pin.event': '事件',
+
+    'tool.select.title': '选择 / 移动（V）',
+    'tool.pen.title': '画笔（P）',
+    'tool.path.title': '路线（R）：沿玩家走过的路线拖动',
+    'tool.link.title': '关联两名玩家（L）：从一个头像拖到另一个',
+    'tool.pin.title': '放置尸体 / 事件标记（B）',
+    'tool.text.title': '文字备注（T）',
+    'tool.eraser.title': '橡皮擦（E）：点击或拖过要擦除的内容',
+    'hint.select': '拖动头像 · 拖动空白处平移 · 滚轮缩放',
+    'hint.link': '从头像拖到头像',
+    'hint.eraser': '点击或拖过笔迹、路线、关联、标记',
+    'hint.eraserNet': '点击或拖过关联即可删除',
+    'hint.selectNet': '所有人围成一圈 · 拖动调整位置 · 用关联工具（L）连线',
+    'hint.path': '沿路线拖动玩家 · Shift+拖动可延长 · 已选中玩家时可从任意处开始',
+    'view.zoomOut': '缩小',
+    'view.fit': '显示全图（F）',
+    'view.zoomIn': '放大',
+    'view.paths': '路线',
+    'view.paths.title': '显示本场会议画的移动路线',
+    'view.votes': '得票',
+    'view.votes.title': '在头像上显示得票数',
+    'view.claims': '报身份',
+    'view.claims.title': '在头像上方显示报的身份',
+    'view.dead': '死者',
+    'view.dead.title': '在画板上显示死亡玩家',
+    'view.size': '大小',
+    'view.size.title': '头像大小',
+    'view.map': '地图',
+    'view.net': '关系网',
+    'view.switch.title': '地图 / 关系网（N）',
+    'net.reset': '重置布局',
+    'net.reset.title': '让所有人回到圆环上',
+
+    'play.play': '播放所有人的路线（G）',
+    'play.pause': '暂停（G）',
+    'play.scrub': '拖动查看移动过程',
+    'play.speed': '播放速度',
+    'play.mode': '计时方式',
+    'play.mode.sync': '同时出发、同时到达',
+    'play.mode.speed': '相同行走速度',
+    'play.stop': '停止：回到最终位置',
+    'play.paths.other': '{n} 条路线',
+
+    'stage.drop': '松开即可导入截图',
+    'text.default': '备注',
+
+    'roster.placeAll': '放置剩余玩家',
+    'roster.placeAll.title': '把所有未放置的玩家放到画板上',
+    'roster.alive.html': '存活 <b>{alive}</b>/{total}',
+    'roster.noGame': '未载入对局',
+    'roster.empty.html': '还没有玩家。<br><br>用 <b>Ctrl+V</b> 粘贴会议截图、拖入页面，或点击 <b>导入截图</b>。',
+    'roster.subDead': '死亡',
+    'roster.subEjected': '被投出',
+    'roster.item.title': '拖到地图上 · 双击放置/居中',
+    'roster.cycle': '{tag}：点击切换',
+    'roster.onMap': '已放置',
+    'roster.setStatus': '设为{status}（本场会议）',
+    'roster.setAlive': '设为存活（所有会议）',
+    'roster.groupAlive': '存活 · {n}',
+    'roster.groupDead': '死亡 · {n}',
+
+    'tab.inspect': '详情',
+    'tab.round': '会议',
+
+    'hist.onMap': '已放置',
+    'hist.path': '已画路线',
+    'hist.gotVotes.other': '得 {n} 票',
+    'hist.event': '事件：{title}',
+    'list.sep': '、',
+    'hist.with': '与 {name} 同行',
+    'hist.vouch': '担保 {name}',
+    'hist.vouchBy': '被 {name} 担保',
+    'hist.accuse': '指认 {name}',
+    'hist.accuseBy': '被 {name} 指认',
+    'hist.saw': '看见 {name}',
+    'hist.sawBy': '被 {name} 看见',
+    'hist.follow': '跟随 {name}',
+    'hist.followBy': '被 {name} 跟随',
+    'hist.kill': '击杀 {name}',
+    'hist.killBy': '被 {name} 击杀',
+    'hist.dead': '死亡',
+    'hist.ejected': '被投出',
+    'hist.none': '暂无记录。',
+
+    'ins.onMap': '{label} 中已放置',
+    'ins.notPlaced': '{label} 中未放置',
+    'ins.read': '判断',
+    'ins.status': '状态',
+    'ins.statusHint': '（D 切换）',
+    'ins.since': '出局于',
+    'ins.claim': '报身份',
+    'ins.claim.ph': '如：警长、加拿大鹅…',
+    'ins.notes': '笔记',
+    'ins.notes.ph': '不在场证明、目击、语音破绽、会议发言…',
+    'ins.history': '记录',
+    'ins.unplace': '从地图移除',
+    'ins.place': '放到视图中心',
+    'ins.clearPath': '清除路线',
+    'ins.icon': '更换头像…',
+    'ins.deletePlayer': '删除玩家',
+    'ins.pinTitle': '{kind}标记',
+    'ins.victim': '死者',
+    'ins.victimNone': '— 无 —',
+    'ins.label': '说明',
+    'ins.pinLabel.ph': '如：谁发现的，附近有通风口',
+    'ins.deletePin': '删除标记',
+    'ins.evWhat': '发生了什么',
+    'ins.evWhat.ph': '如：灯被破坏、门被锁、看到有人钻管道',
+    'ins.evWhen': '时间',
+    'ins.evWho': '相关玩家',
+    'ins.evWhoHint': '（点击选择）',
+    'ins.evDetails': '详情',
+    'ins.evDetails.ph': '具体经过、谁说的、有多确定…',
+    'time.early': '前期',
+    'time.mid': '中期',
+    'time.late': '后期',
+    'time.toggle': '再点一次取消',
+    'time.clock': '本轮内的时间，每 30 秒一段',
+    'time.clockNone': '— 30 秒区间 —',
+    'time.unknown': '时间未知',
+    'ins.textNote': '文字备注',
+    'ins.size': '大小',
+    'ins.color': '颜色',
+    'ins.deleteText': '删除文字',
+    'ins.link': '关联',
+    'ins.note': '备注',
+    'ins.linkNote.ph': '如：一起在实验室',
+    'ins.swap': '交换方向',
+    'ins.deleteLink': '删除关联',
+    'ins.drawing': '笔迹',
+    'ins.deleteDrawing': '删除笔迹',
+
+    'help.quick': '快速上手',
+    'help.quick.html':
+      '1. 会议中截图，然后在这里按 <kbd>Ctrl</kbd>+<kbd>V</kbd>（或拖入文件）。<br>' +
+      '2. 核对名字后点 <b>开始新对局</b>。同一场会议再次导入时：<b>更新</b> 会记录新的死亡。<br>' +
+      '3. 把玩家从列表拖到地图上被看到的位置。<br>' +
+      '4. 下一次会议：导入那次的截图并选 <b>新会议</b>。新会议从空白画板开始，之前会议的内容不会带过来。每场会议保留各自的布局和截图（用顶部标签或 <kbd>[</kbd> <kbd>]</kbd> 切换）。<br>' +
+      '5. 路线工具（<kbd>R</kbd>）：沿每个玩家走过的路线拖动。点播放即可看所有人同时移动。<br>' +
+      '6. 标记判断、记录报的身份，关联不在场证明、指认和击杀。在 <b>会议</b> 标签页记录每人得了几票。<br>' +
+      '7. <b>关系网</b>（<kbd>N</kbd>）：所有人围成一圈，显示本场会议的关系，适合地图上头像挤在一起看不清的时候。<br>' +
+      '8. 事件标记记录发生了什么、什么时候、和谁有关；<b>会议</b> 标签页会把它们排成时间轴。',
+    'help.keys': '快捷键',
+    'help.keys.html':
+      '<kbd>V</kbd> 移动 · <kbd>R</kbd> 路线 · <kbd>P</kbd> 画笔 · <kbd>L</kbd> 关联 · <kbd>B</kbd> 标记 · <kbd>T</kbd> 文字 · <kbd>E</kbd> 橡皮擦<br>' +
+      '<kbd>G</kbd> 播放 / 暂停所有人的路线 · <kbd>N</kbd> 地图 / 关系网<br>' +
+      '<kbd>1</kbd>–<kbd>6</kbd> 标记选中玩家 · <kbd>D</kbd> 切换存活/死亡/被投出<br>' +
+      '<kbd>Del</kbd> 删除选中项 · <kbd>F</kbd> 显示全图 · <kbd>[</kbd> <kbd>]</kbd> 上一场/下一场会议<br>' +
+      '<kbd>Space</kbd>+拖动或中键拖动：平移 · 滚轮缩放<br>' +
+      '<kbd>Ctrl</kbd>+<kbd>Z</kbd> 撤销 · <kbd>Ctrl</kbd>+<kbd>Y</kbd> 重做 · <kbd>Esc</kbd> 取消选择',
+    'help.legend': '图例',
+    'help.vote': '本场会议得票数',
+
+    'conf.prev': '◀ 上一场',
+    'conf.next': '下一场 ▶',
+    'conf.shotAlt': '会议截图',
+    'conf.shotEnlarge': '点击放大',
+    'conf.noShot.html': '本场会议没有保存截图。导入一张并选 <b>更新</b> 即可附加。',
+    'conf.shotMissing': '截图丢失。',
+    'conf.votes': '得票记录',
+    'conf.voteHint': '游戏里只显示每人得了几票，在这里记下来。',
+    'conf.voteTotal': '已记录 {total} / {voters} 票',
+    'conf.voteInc': '加一票',
+    'conf.voteDec': '减一票',
+    'conf.skip': '弃票',
+    'conf.importFirst': '请先导入玩家。',
+    'conf.timeline': '事件时间轴',
+    'conf.noEvents': '还没有事件。在地图上放置事件标记（B）。',
+    'conf.eventUntitled': '未命名事件',
+    'conf.deaths': '本场会议出局',
+    'conf.dead': '死亡',
+    'conf.ejected': '被投出',
+    'conf.bodyPin': '尸体标记',
+    'conf.unknownVictim': '未知',
+    'conf.noneRecorded': '暂无记录。',
+    'conf.notes': '会议笔记',
+    'conf.notes.ph': '谁拉的会议、尸体在哪、时间线…',
+    'conf.clearVotes': '清空得票',
+    'conf.delete': '删除会议',
+    'conf.confirmDelete': '删除 {label}、它的截图以及其中画的所有内容？',
+    'conf.rename': '重命名会议',
+
+    'shot.title': '截图',
+    'shot.titleFor': '{label} 会议截图',
+    'shot.close': '点击任意处关闭',
+    'shot.notFound': '找不到截图',
+
+    'dlg.close': '关闭',
+    'dlg.cancel': '取消',
+    'dlg.ok': '确定',
+    'prompt.title': '输入',
+
+    'import.title': '导入会议截图',
+    'import.empty.pre': '粘贴（Ctrl+V）、拖入，或',
+    'import.browse': '浏览',
+    'import.empty.post': '选择一张会议截图。',
+    'import.calib': '校准',
+    'import.calibNote': '（仅当方框与卡片对不齐时使用）',
+    'import.calX': 'X 偏移',
+    'import.calY': 'Y 偏移',
+    'import.calS': '缩放',
+    'import.calReset': '重置',
+    'import.hint.html': '名字可以修改。<b>新会议</b> = 下一次会议：空白画板 + 这张截图。',
+    'import.newGame': '开始新对局',
+    'import.update': '更新 {label}',
+    'import.next': '新会议（{label}）',
+    'import.none': '还没有截图。',
+    'import.badImage': '无法读取这张图片。',
+    'import.noCards': '没有找到玩家卡片。这是会议界面吗？试试校准滑块。',
+    'import.loading': '正在加载文字识别引擎…',
+    'import.needServer': '识别名字需要本地服务器：请关闭此标签页并运行 start.bat。你仍可手动输入名字（留空 = P1、P2…）。',
+    'import.ocrFailed': '名字识别加载失败。请手动输入名字（留空 = P1、P2…）后继续。',
+    'import.reading': '正在识别名字… {i}/{n}',
+    'import.found.other': '找到 {n} 名玩家，{dead} 名死亡。核对名字后选择下方操作。',
+    'import.row.include': '导入此玩家',
+    'import.row.reading': '识别中…',
+    'import.row.typeNameBlank': '输入名字（留空 = P{n}）',
+    'import.row.dead': '死亡',
+    'import.row.deadTitle': '截图中已死亡',
+    'import.row.snapped': '已匹配到之前见过的名字',
+    'import.row.ocr': '识别：{text}',
+    'import.row.match': '= {name}',
+    'import.row.new': '新玩家',
+    'import.confirmNew': '开始新对局？当前画板将被替换（仍可 Ctrl+Z 撤销）。',
+
+    'confirm.newGame': '开始新的空白对局？（仍可 Ctrl+Z 撤销）',
+    'confirm.deletePlayer': '从本局中彻底删除 {name}？',
+    'confirm.clearRound': '清除 {label} 地图上的所有笔迹、路线、关联、标记和文字？',
+    'prompt.addPlayer': '添加玩家',
+    'prompt.addPlayerMsg': '填写游戏中显示的名字。',
+
+    'toast.nothingUndo': '没有可撤销的操作',
+    'toast.nothingRedo': '没有可重做的操作',
+    'toast.storageFull': '无法保存：浏览器存储已满',
+    'toast.mapFailed': '地图图片加载失败：{name}',
+    'toast.mapSession': '无法永久保存地图，仅在本次会话中保留',
+    'toast.noPaths': '本场会议还没有路线：请使用路线工具（R）',
+    'toast.pathStart': '请从某个玩家开始拖动，或先在列表中选中一名玩家',
+    'toast.linkRemoved': '已移除「{type}」关联',
+    'toast.linkAdded': '{a} → {type} → {b}',
+    'toast.allPlaced': '所有人都已在画板上',
+    'toast.placed': '已放置 {n} 人，把他们拖到被看到的位置',
+    'toast.unplaced': '已从画板移除（仅 {label}）',
+    'toast.markedDead': '已将 {name} 标记为死亡',
+    'toast.statusAlive': '{name} 已恢复存活',
+    'toast.statusOut': '{name}：{label} {status}',
+    'toast.newGame.other': '新对局：{n} 名玩家',
+    'toast.nextConf': '{label}：空白画板，新增 {died} 名死者{extra}。把玩家拖到他们现在的位置。',
+    'toast.nextConfNew': '，{n} 名新玩家',
+    'toast.updated': '{label} 已更新：新增 {added} 名玩家、{died} 名死者',
+    'toast.loaded': '对局已载入',
+    'toast.loadFailed': '无法载入：{msg}',
+    'toast.notGame': '不是对局文件',
+    'toast.badJson': '不是有效的 JSON 文件',
+    'toast.pngFailed': 'PNG 导出失败',
+    'toast.saveFailed': '保存失败',
+  };
+
+  // Role-claim suggestions, same order in both languages (goose roles, duck roles, neutrals).
+  const roles = {
+    en: [
+      'Goose', 'Adventurer', 'Avenger', 'Birdwatcher', 'Bodyguard', 'Canadian', 'Celebrity', 'Detective',
+      'Engineer', 'Gravy', 'Locksmith', 'Lover', 'Mechanic', 'Medium', 'Mimic', 'Mortician',
+      'Politician', 'Sheriff', 'Snoop', 'Soldier', 'Street Urchin', 'Vigilante',
+      'Duck', 'Assassin', 'Cannibal', 'Demolitionist', 'Hitman', 'Identity Thief', 'Morphling', 'Ninja',
+      'Party Duck', 'Professional', 'Silencer', 'Snitch', 'Spy', 'Undertaker',
+      'Dodo', 'Falcon', 'Pelican', 'Pigeon', 'Vulture',
+    ],
+    zh: [
+      '鹅', '冒险家', '复仇者', '观鸟者', '保镖', '加拿大鹅', '网红', '侦探',
+      '工程师', '肉汁', '锁匠', '恋人', '机械师', '通灵者', '模仿者', '殡仪员',
+      '政治家', '警长', '窥探者', '士兵', '街头顽童', '正义使者',
+      '鸭', '刺客', '食鸟鸭', '爆炸王', '雇佣杀手', '身份窃贼', '变形者', '忍者',
+      '派对狂', '专业杀手', '静语者', '告密者', '间谍', '送葬者',
+      '呆呆鸟', '猎鹰', '鹈鹕', '鸽子', '秃鹫',
+    ],
+  };
+
+  const dict = { en, zh };
+  const LANGS = ['en', 'zh'];
+  let lang = 'en';
+  const listeners = [];
+
+  const has = (l, k) => Object.prototype.hasOwnProperty.call(dict[l], k);
+  const fill = (s, vars) => (vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s);
+
+  /** Current language → English → the key itself. */
+  function t(key, vars) {
+    const s = has(lang, key) ? dict[lang][key] : has('en', key) ? en[key] : key;
+    return fill(s, vars);
+  }
+  /** Plural-aware lookup: key.one / key.other; {n} is filled in automatically. */
+  function tn(key, n, vars) {
+    const form = n === 1 ? 'one' : 'other';
+    const k = has(lang, `${key}.${form}`) ? `${key}.${form}` : has(lang, `${key}.other`) ? `${key}.other` : `${key}.${form}`;
+    return t(k, Object.assign({ n }, vars));
+  }
+
+  const ATTRS = [['i18nTitle', 'title'], ['i18nPlaceholder', 'placeholder'], ['i18nAlt', 'alt']];
+  function applyStaticI18n(root = document) {
+    for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+    for (const el of root.querySelectorAll('[data-i18n-html]')) el.innerHTML = t(el.dataset.i18nHtml);
+    for (const [ds, attr] of ATTRS) {
+      const sel = '[data-' + ds.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase()) + ']';
+      for (const el of root.querySelectorAll(sel)) el.setAttribute(attr, t(el.dataset[ds]));
+    }
+  }
+
+  function detect() {
+    return String(navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  }
+
+  function setLang(l) {
+    lang = LANGS.includes(l) ? l : 'en';
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    document.title = t('app.title');
+    applyStaticI18n();
+    for (const fn of listeners) fn(lang);
+  }
+
+  window.GGDI18n = {
+    dict, roles, LANGS, t, tn, setLang, detect, applyStaticI18n,
+    getLang: () => lang,
+    roleList: () => roles[lang] || roles.en,
+    onChange: (fn) => { listeners.push(fn); },
+  };
+})();
