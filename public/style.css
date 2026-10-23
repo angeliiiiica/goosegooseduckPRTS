@@ -365,6 +365,31 @@ aside {
 .floating .sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 5px; }
 .floating label { display: inline-flex; align-items: center; gap: 6px; padding: 0 7px; cursor: pointer; user-select: none; }
 .floating label.range input { width: 84px; }
+/* map points panel, bottom right of the stage */
+#poiPanel { bottom: 14px; right: 14px; flex-direction: column; align-items: stretch; gap: 1px; width: 190px; font-size: 13px; }
+#poiPanel .poi-head {
+  display: flex; align-items: center; justify-content: space-between; height: 28px; padding: 0 8px;
+  font: 700 13px/1 var(--tech); letter-spacing: .1em; text-transform: uppercase; color: var(--text);
+}
+#poiPanel .poi-head i {
+  width: 0; height: 0; border: 5px solid transparent; border-top-color: var(--muted); border-bottom: 0;
+}
+#poiPanel.folded .poi-head i { transform: rotate(180deg); }
+#poiPanel.folded .poi-list, #poiPanel.folded .poi-labels { display: none; }
+.poi-list { display: flex; flex-direction: column; gap: 1px; border-top: 1px solid var(--line); padding-top: 3px; }
+#poiPanel .poi-row {
+  display: flex; align-items: center; gap: 8px; height: 27px; padding: 0 8px; min-width: 0;
+  font: 13px/1 var(--font); color: var(--muted); text-align: left;
+}
+#poiPanel .poi-row svg { flex: none; opacity: .3; filter: grayscale(1); }
+#poiPanel .poi-row.on { color: var(--text); }
+#poiPanel .poi-row.on svg { opacity: 1; filter: none; }
+#poiPanel .poi-row em { position: static; margin-left: auto; font: 600 13px/1 var(--tech); color: var(--muted); }
+#poiPanel .poi-labels { padding: 6px 8px 2px; border-top: 1px solid var(--line); margin-top: 2px; }
+/* point markers show their tooltip in select mode; with a drawing tool they must not get in the way */
+#board.tool-select #lPoi > g { cursor: help; }
+#board:not(.tool-select) #lPoi { pointer-events: none; }
+
 .tool-opts { display: flex; align-items: center; flex-wrap: wrap; gap: 3px; min-width: 0; }
 .tool-opts .swatch {
   width: 20px; height: 20px; min-width: 20px; border: 1px solid #0009; padding: 0; margin: 0 2px;

@@ -63,6 +63,7 @@
       <defs id="defs"></defs>
       <g id="vp">
         <g id="lMap"></g>
+        <g id="lPoi"></g>
         <g id="lNet"></g>
         <g id="lStrokes"></g>
         <g id="lLinks"></g>
@@ -102,6 +103,13 @@
       <label data-i18n-title="view.claims.title" title="Show role claims above tokens"><input type="checkbox" id="optClaims"> <span data-i18n="view.claims">Claims</span></label>
       <label data-i18n-title="view.dead.title" title="Show dead players on the board"><input type="checkbox" id="optDead"> <span data-i18n="view.dead">Dead</span></label>
       <label class="range" data-i18n-title="view.size.title" title="Token size"><span data-i18n="view.size">Size</span> <input type="range" id="optSize" min="12" max="48" step="1"></label>
+    </div>
+
+    <!-- map points (tasks, sabotages, mechanisms); only for maps that ship point data -->
+    <div id="poiPanel" class="floating hidden">
+      <button type="button" id="poiFold" class="poi-head" data-i18n-title="poi.fold.title" title="Show or hide the point list"><span data-i18n="poi.title">Map points</span><i aria-hidden="true"></i></button>
+      <div id="poiList" class="poi-list"></div>
+      <label class="poi-labels" data-i18n-title="poi.labels.title" title="Write each point's name on the map"><input type="checkbox" id="poiLabels"> <span data-i18n="poi.labels">Names</span></label>
     </div>
 
     <div id="playbar" class="floating hidden">
@@ -210,6 +218,7 @@
 <script src="vendor/tesseract/tesseract.min.js"></script>
 <script src="parse.js"></script>
 <script src="i18n.js"></script>
+<script src="poi.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

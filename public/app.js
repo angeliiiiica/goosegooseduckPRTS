@@ -31,11 +31,13 @@
 
   const MAPS = [
     // ids are stored in saved games; keep them stable when renaming
-    { id: 'basement-map', name: 'Basement Map', src: 'maps/basement-map.jpg' },
+    // poi: key into GGDPoi.sets (poi.js); the map gets the points overlay and its panel
+    { id: 'basement-wiki', name: 'Basement', src: 'maps/basement-wiki.jpg', poi: 'basement' },
     { id: 'basement', name: 'Basement (Darkout)', src: 'maps/basement-darkout.jpg' },
     { id: 'ancient-sands', name: 'Ancient Sands', src: 'maps/ancient-sands.jpg' },
     { id: 'goosechapel', name: 'Goosechapel (Prison Key)', src: 'maps/goosechapel-prison-key.jpg' },
     { id: 'goosechapel-sewer', name: 'Goosechapel (Sewer)', src: 'maps/goosechapel-sewer.png' },
+    { id: 'goosechapel-cn', name: 'Goose Chapel (Chinese)', src: 'maps/goosechapel-cn.jpg' },
     { id: 'blank', name: 'Blank board', src: null, w: 1600, h: 1000 },
   ];
   // display labels come from i18n.js (tag.*, link.*, pin.*, status.*)
@@ -101,6 +103,12 @@
     '#00bbf9', '#a3e635', '#f97316', '#e879f9', '#22d3ee', '#facc15', '#fb7185', '#94a3b8'];
   const PLAY_MS = 6000; // one full playback at 1x
 
+  // Retired built-in maps: saved games on them are moved onto the replacement in sanitize().
+  // `to` maps old image pixels onto the new image (fitted on wall edges, error ≈ a few px).
+  const RETIRED_MAPS = {
+    'basement-map': { id: 'basement-wiki', to: (x, y) => [x * 1.26 - 35, y * 1.255 - 26] },
+  };
+
   // ======================================================================
   // storage
   // ======================================================================
@@ -164,12 +172,29 @@
     return { id: uid(), label: 'C' + n, positions: positions || {}, paths: {}, links: [], strokes: [], pins: [], texts: [], tally: {}, net: {}, notes: '' };
   }
   function newGame(mapId) {
-    return { version: 1, mapId: mapId || 'basement', players: [], rounds: [newRound(1)], roundIdx: 0 };
+    return { version: 1, mapId: mapId || 'basement-wiki', players: [], rounds: [newRound(1)], roundIdx: 0 };
+  }
+  /** Moves every map-space mark of a game from a retired map's image onto its replacement. */
+  function migrateRetiredMap(s) {
+    const ret = RETIRED_MAPS[s.mapId];
+    if (!ret) return;
+    const pt = (o) => { if (o && isFinite(o.x) && isFinite(o.y)) { const [x, y] = ret.to(+o.x, +o.y); o.x = +x.toFixed(1); o.y = +y.toFixed(1); } };
+    const arr = (a) => (Array.isArray(a) ? a.map((q) => { const [x, y] = ret.to(+q[0], +q[1]); return [+x.toFixed(1), +y.toFixed(1)]; }) : a);
+    for (const r of s.rounds) {
+      Object.values(r.positions || {}).forEach(pt);
+      for (const k of Object.keys(r.paths || {})) r.paths[k] = arr(r.paths[k]);
+      for (const st of r.strokes || []) st.points = arr(st.points);
+      (r.pins || []).forEach(pt);
+      (r.texts || []).forEach(pt);
+      // r.net is network-view space, not map space: untouched
+    }
+    s.mapId = ret.id;
   }
   function sanitize(s) {
     if (!s || typeof s !== 'object' || !Array.isArray(s.players) || !Array.isArray(s.rounds) || !s.rounds.length) return null;
     s.version = 1;
     s.mapId = s.mapId || 'basement';
+    migrateRetiredMap(s);
     for (const p of s.players) {
       p.id = p.id || uid(); p.name = p.name || '?'; p.tag = p.tag || 'unknown';
       p.status = p.status || 'alive'; p.claim = p.claim || ''; p.notes = p.notes || '';
@@ -208,7 +233,9 @@
     tool: 'select', linkType: 'with', pinKind: 'body', penColor: '#ffffff', textColor: '#ffffff',
     showPaths: true, playSpeed: 1, playMode: 'sync', showVotes: true, showClaims: true, showDead: true, tokenR: 24,
     view: 'map', // 'map' | 'net' (relationship network)
+    poi: { task: true, sab: true }, poiLabels: false, poiOpen: true, // map points overlay: groups shown
   }, LS.get(K.prefs, {}));
+  if (!prefs.poi || typeof prefs.poi !== 'object') prefs.poi = { task: true, sab: true };
   if (!GGDI18n.LANGS.includes(prefs.lang)) prefs.lang = GGDI18n.detect();
   if (prefs.view !== 'net') prefs.view = 'map';
   if (!LINKS[prefs.linkType]) prefs.linkType = 'with';
@@ -315,7 +342,7 @@
   const svg = $('#board');
   const vp = $('#vp');
   const L = {
-    map: $('#lMap'), net: $('#lNet'), strokes: $('#lStrokes'), links: $('#lLinks'), paths: $('#lPaths'),
+    map: $('#lMap'), poi: $('#lPoi'), net: $('#lNet'), strokes: $('#lStrokes'), links: $('#lLinks'), paths: $('#lPaths'),
     pins: $('#lPins'), texts: $('#lTexts'), tokens: $('#lTokens'), temp: $('#lTemp'),
   };
 
@@ -488,6 +515,7 @@
     ensureMap();
     // the map stays loaded underneath; the network view just hides it and the map-only layers
     L.map.setAttribute('display', net ? 'none' : 'inline');
+    renderPoi();
     svg.setAttribute('class', 'tool-' + prefs.tool + (net ? ' view-net' : ''));
     if (net) {
       for (const k of ['strokes', 'paths', 'pins', 'texts']) L[k].innerHTML = '';
@@ -513,6 +541,109 @@
     svgEl('circle', { cx: 0, cy: 0, r: rad + TR * 2.4, fill: 'none', stroke: '#ffffff', 'stroke-opacity': 0.05, 'stroke-width': 1 }, L.net);
     const c = TR * 0.6;
     svgEl('path', { d: `M${-c},0H${c}M0,${-c}V${c}`, stroke: '#ffffff', 'stroke-opacity': 0.25, 'stroke-width': 1.5 }, L.net);
+  }
+
+  // ---- map points (poi.js): tasks, sabotages and mechanisms drawn over the map image ----
+  const POI_COLOR = {
+    goose: '#4cd890', special: '#ffd93d', destroy: '#ff4d5e', torch: '#ff9f1c', spawn: '#22d3ee',
+    food: '#facc15', shelter: '#4aa8ff', peek: '#c77dff', furnace: '#c2410c', portal: '#f15bb5', tribute: '#ffd93d',
+  };
+  const POI_R = 9; // marker radius in map pixels
+  const poiSet = () => {
+    const m = currentMap();
+    return (m.poi && self.GGDPoi && GGDPoi.sets[m.poi]) || null;
+  };
+  const poiName = (q) => (GGDI18n.getLang() === 'zh' ? q.zh : q.en);
+  function poiTitle(q) {
+    const room = q.room ? (GGDI18n.getLang() === 'zh' ? q.room.zh : q.room.en) : '';
+    const speed = q.speed ? t('poi.speed.' + q.speed) : '';
+    return [poiName(q), [room, speed].filter(Boolean).join(' · ')].filter(Boolean).join('\n');
+  }
+  /** One marker shape centred on 0,0 (also used for the panel's legend icons). */
+  function poiShape(g, type, s) {
+    const c = POI_COLOR[type] || '#fff', ink = '#05080c';
+    const path = (d, w = 2) => svgEl('path', { d, fill: c, stroke: ink, 'stroke-width': w, 'stroke-linejoin': 'round' }, g);
+    const ring = (r, w) => {
+      svgEl('circle', { r, fill: 'none', stroke: ink, 'stroke-width': w + 3 }, g);
+      svgEl('circle', { r, fill: 'none', stroke: c, 'stroke-width': w }, g);
+    };
+    switch (type) {
+      case 'destroy': { const k = s * 1.3; path(`M0,${-k}L${k},0L0,${k}L${-k},0Z`); break; }
+      case 'torch': path(`M0,${-s * 1.4}C${s},${-s * 0.3} ${s * 0.9},${s} 0,${s}C${-s * 0.9},${s} ${-s},${-s * 0.3} 0,${-s * 1.4}Z`); break;
+      case 'shelter': svgEl('rect', { x: -s * 0.9, y: -s * 0.9, width: s * 1.8, height: s * 1.8, fill: c, stroke: ink, 'stroke-width': 2 }, g); break;
+      case 'peek':
+        path(`M${-s * 1.35},0Q0,${-s * 1.3} ${s * 1.35},0Q0,${s * 1.3} ${-s * 1.35},0Z`, 1.6);
+        svgEl('circle', { r: s * 0.4, fill: ink }, g);
+        break;
+      case 'spawn': ring(s * 0.85, 2.5); svgEl('circle', { r: s * 0.3, fill: c }, g); break;
+      case 'portal': ring(s, 2.5); ring(s * 0.5, 2); break;
+      case 'food': svgEl('circle', { r: s * 0.6, fill: c, stroke: ink, 'stroke-width': 1.5 }, g); break;
+      case 'furnace': {
+        const k = s * 0.95, e = k * 0.45;
+        path(`M${-k + e},${-k}H${k - e}L${k},${-k + e}V${k - e}L${k - e},${k}H${-k + e}L${-k},${k - e}V${-k + e}Z`);
+        break;
+      }
+      case 'tribute': {
+        const pts = [];
+        for (let i = 0; i < 10; i++) {
+          const a = -Math.PI / 2 + (i * Math.PI) / 5, r = i % 2 ? s * 0.55 : s * 1.3;
+          pts.push(`${(Math.cos(a) * r).toFixed(2)},${(Math.sin(a) * r).toFixed(2)}`);
+        }
+        path('M' + pts.join('L') + 'Z', 1.6);
+        break;
+      }
+      default: // goose / special tasks
+        svgEl('circle', { r: s, fill: c, stroke: ink, 'stroke-width': 2 }, g);
+        svgEl('circle', { r: s * 0.32, fill: ink, opacity: 0.55 }, g);
+    }
+  }
+  // sabotages and mechanisms sit on top of the task dots they share a spot with
+  const POI_ORDER = ['task', 'food', 'spawn', 'torch', 'hide', 'peek', 'misc', 'sab'];
+  function renderPoi() {
+    const set = isNet() ? null : poiSet();
+    const { w, h } = ui.mapSize;
+    const sig = set ? [currentMap().id, w, h, JSON.stringify(prefs.poi), prefs.poiLabels, GGDI18n.getLang()].join('|') : '';
+    if (L.poi.__sig === sig) return;
+    L.poi.__sig = sig;
+    L.poi.innerHTML = '';
+    if (!set) return;
+    const fs = 11;
+    const list = set.filter((q) => prefs.poi[q.group]).sort((a, b) => POI_ORDER.indexOf(a.group) - POI_ORDER.indexOf(b.group));
+    for (const q of list) {
+      const x = +(q.x / 1000 * w).toFixed(1), y = +(q.y / 1000 * h).toFixed(1);
+      const g = svgEl('g', { transform: `translate(${x},${y})` }, L.poi);
+      svgEl('title', null, g).textContent = poiTitle(q);
+      poiShape(g, q.type, POI_R);
+      if (prefs.poiLabels) svgText(g, poiName(q), 0, q.up ? -POI_R * 1.5 - 3 : POI_R * 1.5 + fs, fs, POI_COLOR[q.type], 600);
+    }
+  }
+  function renderPoiPanel() {
+    const set = poiSet();
+    const panel = $('#poiPanel');
+    panel.classList.toggle('hidden', !set || isNet());
+    if (!set) return;
+    panel.classList.toggle('folded', !prefs.poiOpen);
+    $('#poiFold').setAttribute('aria-expanded', prefs.poiOpen ? 'true' : 'false');
+    $('#poiLabels').checked = prefs.poiLabels;
+    const list = $('#poiList');
+    list.innerHTML = '';
+    for (const grp of GGDPoi.GROUPS) {
+      const items = set.filter((q) => q.group === grp);
+      if (!items.length) continue;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.g = grp;
+      b.className = 'poi-row' + (prefs.poi[grp] ? ' on' : '');
+      b.setAttribute('aria-pressed', prefs.poi[grp] ? 'true' : 'false');
+      const icon = svgEl('svg', { viewBox: '-14 -14 28 28', width: 18, height: 18, 'aria-hidden': 'true' }, b);
+      poiShape(icon, items[0].type, 9);
+      const label = document.createElement('span');
+      label.textContent = t('poi.g.' + grp);
+      const n = document.createElement('em');
+      n.textContent = items.length;
+      b.append(label, n);
+      list.appendChild(b);
+    }
   }
 
   /** Curved connector between two token centres, trimmed to the token rims. */
@@ -1248,6 +1379,7 @@
     $('#optClaims').checked = prefs.showClaims;
     $('#optDead').checked = prefs.showDead;
     $('#optSize').value = prefs.tokenR;
+    renderPoiPanel();
   }
   function $$(s, el = document) { return Array.from(el.querySelectorAll(s)); }
 
@@ -2095,6 +2227,14 @@
     const opt = (id, key) => $(id).addEventListener('change', (e) => { prefs[key] = e.target.checked; savePrefs(); render(); });
     opt('#optPaths', 'showPaths'); opt('#optVotes', 'showVotes'); opt('#optClaims', 'showClaims'); opt('#optDead', 'showDead');
     $('#optSize').addEventListener('input', (e) => { prefs.tokenR = +e.target.value; savePrefs(); renderBoard(); });
+    $('#poiList').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-g]');
+      if (!b) return;
+      prefs.poi[b.dataset.g] = !prefs.poi[b.dataset.g];
+      savePrefs(); renderPoiPanel(); renderBoard();
+    });
+    $('#poiLabels').addEventListener('change', (e) => { prefs.poiLabels = e.target.checked; savePrefs(); renderBoard(); });
+    $('#poiFold').onclick = () => { prefs.poiOpen = !prefs.poiOpen; savePrefs(); renderPoiPanel(); };
 
     // header
     $('#mapSelect').addEventListener('change', (e) => {
