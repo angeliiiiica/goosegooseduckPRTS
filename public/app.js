@@ -180,8 +180,12 @@
    *  pin stops being a body, that mark is taken back, unless their status was changed since. */
   function revertAutoDeath(pin) {
     const p = pin.autoDead && P(pin.autoDead);
-    if (p && pin.victim === p.id && p.status === 'dead' && p.diedRound === S.roundIdx) { p.status = 'alive'; p.diedRound = null; }
     pin.autoDead = null;
+    if (!p || pin.victim !== p.id || p.status !== 'dead' || p.diedRound !== S.roundIdx) return;
+    // another body in this conference still names them: that one keeps the death (and now owns it)
+    const other = R().pins.find((q) => q !== pin && q.kind === 'body' && q.victim === p.id);
+    if (other) { other.autoDead = p.id; return; }
+    p.status = 'alive'; p.diedRound = null;
   }
 
   // tally: votes each player received at this meeting ({pid: n, skip: n}); the game only shows counts
@@ -199,7 +203,7 @@
     return n + 1;
   }
   function newGame(mapId) {
-    return { version: 1, mapId: mapId || 'basement-wiki', players: [], rounds: [newRound(1)], roundIdx: 0 };
+    return { version: 2, mapId: mapId || 'basement-wiki', players: [], rounds: [newRound(1)], roundIdx: 0 };
   }
   /** Moves every map-space mark of a game from a retired map's image onto its replacement. */
   function migrateRetiredMap(s) {
@@ -231,7 +235,9 @@
     s.players = objs(s.players);
     s.rounds = objs(s.rounds);
     if (!s.rounds.length) return null;
-    s.version = 1;
+    // version 2: conference labels are the user's own. Saves before it may still carry the old R<n> labels.
+    const oldSave = !(+s.version >= 2);
+    s.version = 2;
     s.mapId = str(s.mapId, 'basement');
     for (const p of s.players) {
       p.id = str(p.id, '') || uid(); p.name = str(p.name, '?'); p.tag = str(p.tag, 'unknown');
@@ -246,8 +252,8 @@
       if (typeof p.icon !== 'string' || !p.icon.startsWith('data:image/')) { p.icon = generatedIcon(p.name); p.iconGenerated = true; }
     }
     // saves from before conferences were called C<n> labelled every round R<n>; only those are renamed,
-    // so a conference the user names R7 keeps its name
-    const legacyLabels = s.rounds.every((r) => /^R\d+$/.test(r.label || ''));
+    // once, so a conference the user names R7 keeps its name
+    const legacyLabels = oldSave && s.rounds.every((r) => /^R\d+$/.test(r.label || ''));
     s.rounds.forEach((r, i) => {
       r.id = str(r.id, '') || uid();
       r.label = str(r.label, 'C' + (i + 1));
@@ -285,7 +291,7 @@
         // 1.1 events shared the body form, so an event could name a "victim": keep them as involved.
         // Switching a pin to event moves its victim the same way, so only such old saves still hold one.
         if (pin.kind === 'event' && pin.victim) {
-          if (!pin.players.length) pin.players = [pin.victim];
+          if (!pin.players.includes(pin.victim)) pin.players.push(pin.victim);
           pin.victim = null;
         }
       }
@@ -403,13 +409,14 @@
     else toast(t('toast.storageFull'));
   }
   // Another tab may have changed other settings since this one loaded them: write back only the
-  // settings this tab changed, over whatever is stored now.
+  // settings this tab changed (the keys passed, which the user just set, and any other that differs
+  // from what this tab last saw), over whatever is stored now.
   let prefsBase = JSON.parse(JSON.stringify(prefs));
-  function savePrefs() {
+  function savePrefs(...keys) {
     const stored = LS.get(K.prefs, {});
     const out = stored && typeof stored === 'object' ? stored : {};
     for (const k of Object.keys(prefs)) {
-      if (JSON.stringify(prefs[k]) !== JSON.stringify(prefsBase[k])) out[k] = prefs[k];
+      if (keys.includes(k) || JSON.stringify(prefs[k]) !== JSON.stringify(prefsBase[k])) out[k] = prefs[k];
     }
     if (LS.set(K.prefs, out)) prefsBase = JSON.parse(JSON.stringify(prefs));
   }
@@ -783,11 +790,9 @@
   function connPath(A, B, off, trimA, trimB) {
     const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy);
     if (len < 1) return null;
-    // tokens close together: shorten the trims so the link still shows between them
-    if (len < trimA + trimB + 4) {
-      const f = Math.max(0, (len - 4) / (trimA + trimB));
-      trimA *= f; trimB *= f;
-    }
+    // tokens too close for a line between their rims (it would sit under the tokens): bow the link
+    // out to one side, so it leaves one rim and comes back to the other around the outside
+    if (len < trimA + trimB + 4) off = (off < 0 ? -1 : 1) * Math.max(Math.abs(off), (trimA + trimB) * 0.75);
     const nx = -dy / len, ny = dx / len;
     const cx = (A.x + B.x) / 2 + nx * off * 2, cy = (A.y + B.y) / 2 + ny * off * 2;
     const trim = (p, t) => {
@@ -1136,6 +1141,7 @@
     if (d.type === 'move' && d.moved) {
       const pos = itemPos(d.kind, d.id);
       if (pos) { pos.x = d.ox; pos.y = d.oy; }
+      if (d.netPinned) delete R().net[d.id]; // back on its computed ring slot
       undoStack.pop(); // the step the move pushed when it started
       renderBoard();
     } else if (d.type === 'erase' && d.erased) {
@@ -1263,7 +1269,7 @@
         drag.moved = true;
         checkpoint();
         // a ring slot is computed, not stored: pin it down in this conference's layout before moving it
-        if (drag.kind === 'player' && isNet() && !R().net[drag.id]) R().net[drag.id] = { x: drag.ox, y: drag.oy };
+        if (drag.kind === 'player' && isNet() && !R().net[drag.id]) { R().net[drag.id] = { x: drag.ox, y: drag.oy }; drag.netPinned = true; }
       }
       const pos = itemPos(drag.kind, drag.id);
       if (!pos) return;
@@ -1523,7 +1529,7 @@
     if (v === 'net' && !NET_TOOLS.includes(prefs.tool)) prefs.tool = 'select';
     // pins, notes and drawings aren't drawn in the network: don't leave one selected (Delete would remove it unseen)
     if (v === 'net' && ui.sel && ['pin', 'text', 'stroke'].includes(ui.sel.kind)) { ui.sel = null; renderRoster(); renderInspector(); }
-    savePrefs();
+    savePrefs('view', 'tool');
     L.temp.innerHTML = '';
     renderHeader();
     renderBoard();
@@ -2587,7 +2593,7 @@
   }
   function setTool(t) {
     if (isNet() && !NET_TOOLS.includes(t)) { prefs.tool = t; setView('map'); return; } // drawing tools live on the map
-    prefs.tool = t; savePrefs();
+    prefs.tool = t; savePrefs('tool');
     renderHeader(); renderBoard();
   }
 
@@ -2623,9 +2629,9 @@
       const b = e.target.closest('button');
       if (!b) return;
       if (b.dataset.tool) return setTool(b.dataset.tool);
-      if (b.dataset.color) { prefs[b.dataset.key] = b.dataset.color; savePrefs(); renderToolOpts(); }
-      if (b.dataset.ltype) { prefs.linkType = b.dataset.ltype; savePrefs(); renderToolOpts(); }
-      if (b.dataset.pkind) { prefs.pinKind = b.dataset.pkind; savePrefs(); renderToolOpts(); }
+      if (b.dataset.color) { prefs[b.dataset.key] = b.dataset.color; savePrefs(b.dataset.key); renderToolOpts(); }
+      if (b.dataset.ltype) { prefs.linkType = b.dataset.ltype; savePrefs('linkType'); renderToolOpts(); }
+      if (b.dataset.pkind) { prefs.pinKind = b.dataset.pkind; savePrefs('pinKind'); renderToolOpts(); }
     });
     $('#viewSwitch').addEventListener('click', (e) => {
       const b = e.target.closest('[data-view]');
@@ -2638,19 +2644,19 @@
     $('#playBtn').onclick = togglePlay;
     $('#playStop').onclick = stopPlay;
     $('#playScrub').addEventListener('input', (e) => scrubPlay(+e.target.value / 1000));
-    $('#playSpeed').addEventListener('change', (e) => { prefs.playSpeed = +e.target.value; savePrefs(); });
-    $('#playMode').addEventListener('change', (e) => { prefs.playMode = e.target.value; savePrefs(); renderBoard(); });
-    const opt = (id, key) => $(id).addEventListener('change', (e) => { prefs[key] = e.target.checked; savePrefs(); render(); });
+    $('#playSpeed').addEventListener('change', (e) => { prefs.playSpeed = +e.target.value; savePrefs('playSpeed'); });
+    $('#playMode').addEventListener('change', (e) => { prefs.playMode = e.target.value; savePrefs('playMode'); renderBoard(); });
+    const opt = (id, key) => $(id).addEventListener('change', (e) => { prefs[key] = e.target.checked; savePrefs(key); render(); });
     opt('#optPaths', 'showPaths'); opt('#optVotes', 'showVotes'); opt('#optClaims', 'showClaims'); opt('#optDead', 'showDead');
-    $('#optSize').addEventListener('input', (e) => { prefs.tokenR = +e.target.value; savePrefs(); renderBoard(); });
+    $('#optSize').addEventListener('input', (e) => { prefs.tokenR = +e.target.value; savePrefs('tokenR'); renderBoard(); });
     $('#poiList').addEventListener('click', (e) => {
       const b = e.target.closest('[data-g]');
       if (!b) return;
       prefs.poi[b.dataset.g] = !prefs.poi[b.dataset.g];
-      savePrefs(); renderPoiPanel(); renderBoard();
+      savePrefs('poi'); renderPoiPanel(); renderBoard();
     });
-    $('#poiLabels').addEventListener('change', (e) => { prefs.poiLabels = e.target.checked; savePrefs(); renderBoard(); });
-    $('#poiFold').onclick = () => { prefs.poiOpen = !prefs.poiOpen; savePrefs(); renderPoiPanel(); };
+    $('#poiLabels').addEventListener('change', (e) => { prefs.poiLabels = e.target.checked; savePrefs('poiLabels'); renderBoard(); });
+    $('#poiFold').onclick = () => { prefs.poiOpen = !prefs.poiOpen; savePrefs('poiOpen'); renderPoiPanel(); };
 
     // header
     $('#mapSelect').addEventListener('change', (e) => {
@@ -2757,24 +2763,35 @@
       const f = e.target.dataset.f;
       // selects are committed by the 'change' handler through mutate(), which checkpoints itself
       if (f === undefined && e.target.dataset.size === undefined) return;
-      if (insNeedCp) { checkpoint(); insNeedCp = false; }
       const r = R();
       if (f !== undefined) {
         const obj = s.kind === 'player' ? P(s.id) : s.kind === 'pin' ? r.pins.find((x) => x.id === s.id)
           : s.kind === 'text' ? r.texts.find((x) => x.id === s.id) : s.kind === 'link' ? r.links.find((x) => x.id === s.id) : null;
         if (!obj) return;
         if (f === 'name') {
-          // an emptied field keeps the last name (a nameless player would reload as '?')
+          // an emptied field keeps the last name (a nameless player would reload as '?'); a keystroke
+          // that changes nothing stored (a trailing space) adds no undo step
           const name = cut(e.target.value.trim(), 20);
-          if (!name) return;
+          if (!name || name === obj.name) return;
+          if (insNeedCp) { checkpoint(); insNeedCp = false; }
           obj.name = name;
-          if (obj.iconGenerated) obj.icon = generatedIcon(name); // initials follow the name
-        } else obj[f] = e.target.value;
+          if (obj.iconGenerated) {
+            obj.icon = generatedIcon(name); // initials follow the name
+            const head = $('#tabInspect .ins-head img'); // not re-rendered while typing (focus)
+            if (head) head.src = obj.icon;
+          }
+        } else {
+          if (insNeedCp) { checkpoint(); insNeedCp = false; }
+          obj[f] = e.target.value;
+        }
         save(); renderBoard(); renderRoster();
         if (s.kind === 'pin') renderRoundPanel();
       } else if (e.target.dataset.size !== undefined) {
         const t = r.texts.find((x) => x.id === s.id);
-        if (t) { t.size = +e.target.value; save(); renderBoard(); }
+        if (t) {
+          if (insNeedCp) { checkpoint(); insNeedCp = false; }
+          t.size = +e.target.value; save(); renderBoard();
+        }
       }
     });
     ins.addEventListener('change', (e) => {
@@ -3011,6 +3028,11 @@
     });
 
     // keyboard
+    // whether the element with focus got it from a click/tap (true) or from the keyboard (false)
+    let pointerAt = -1e9, focusByPointer = false;
+    document.addEventListener('pointerdown', () => { pointerAt = performance.now(); }, true);
+    document.addEventListener('keydown', () => { pointerAt = -1e9; }, true); // Tab moves focus after this
+    document.addEventListener('focusin', () => { focusByPointer = performance.now() - pointerAt < 1000; }, true);
     document.addEventListener('keydown', (e) => {
       // a held drag (draw, move, link, erase) is committed to the board it started on: no shortcuts until release
       if (drag && drag.type !== 'pan') return;
@@ -3023,8 +3045,11 @@
       }
       if (isTyping(e) || document.querySelector('dialog[open]') || e.altKey) return;
       if (e.code === 'Space') {
-        // Space still presses a focused button or ticks a focused checkbox
-        if (e.target.closest && e.target.closest('button, input, select, textarea, a, summary, [role=button]')) return;
+        // Space presses a button or ticks a checkbox reached with the keyboard (Tab). One that only
+        // has focus because it was clicked doesn't take it: holding Space pans, as on the board.
+        // (:focus-visible can't tell: a key press makes a clicked button match it too.)
+        const ctl = e.target.closest && e.target.closest('button, input, select, textarea, a, summary, [role=button]');
+        if (ctl && !focusByPointer) return;
         e.preventDefault(); spaceHeld = true; svg.classList.add('panning'); return;
       }
       const k = e.key.toLowerCase();
@@ -3095,7 +3120,7 @@
   }
   /** Static markup is already re-applied by i18n.js; redo everything app.js renders. */
   function onLangChange(lang) {
-    prefs.lang = lang; savePrefs();
+    prefs.lang = lang; savePrefs('lang');
     $('#toast').classList.add('hidden'); // a toast already showing is in the old language
     renderLangSwitch();
     renderRoleList();

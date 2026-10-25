@@ -85,6 +85,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.primary:hover:not(:disabled) { background-color: #1092d8; border-color: transparent; }
 /* clip-path cuts away anything outside the box, the usual focus outline included: draw it inside */
 .btn.primary:focus-visible, .round-tabs button:focus-visible { outline-offset: -4px; outline-color: #fff; }
+.round-tabs button.active:focus-visible { outline-color: var(--ink); } /* the active tab is near-white */
 .btn.danger { color: var(--danger); }
 .btn.danger:hover:not(:disabled) { border-color: var(--danger); }
 .icon-btn {
@@ -303,6 +304,7 @@ aside {
 
 /* ---------- stage ---------- */
 #stage {
+  container-type: size; /* lets the map-points list size itself to the stage height */
   position: relative; min-width: 0; min-height: 0; overflow: hidden;
   background-color: #111214;
   background-image:
@@ -383,6 +385,8 @@ aside {
 #poiPanel.folded .poi-head i { transform: rotate(180deg); }
 #poiPanel.folded .poi-list, #poiPanel.folded .poi-labels { display: none; }
 .poi-list { display: flex; flex-direction: column; gap: 1px; border-top: 1px solid var(--line); padding-top: 3px; }
+/* on a short stage the list scrolls instead of reaching down over the view bar */
+#poiPanel .poi-list { max-height: max(60px, calc(100cqh - 230px)); overflow-y: auto; }
 #poiPanel .poi-row {
   display: flex; align-items: center; gap: 8px; height: 27px; padding: 0 8px; min-width: 0;
   font: 13px/1 var(--font); color: var(--muted); text-align: left;
