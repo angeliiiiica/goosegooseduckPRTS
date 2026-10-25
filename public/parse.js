@@ -189,9 +189,9 @@
     return { bitmap: P, lightBg };
   }
 
-  /** A live card's name strip: one flat colour (text is the minority) clearly
-   *  brighter than the portrait just above it. Empty slots and stray background fail. */
-  function looksLikeStrip(img, rc) {
+  /** Name strip shape: how much of it is one flat colour (a plate with a little text on it), that
+   *  colour's luma, and the mean luma of the portrait just above it. */
+  function stripInfo(img, rc) {
     const { x0, y0, x1, y1 } = clampRect(img, rc.strip);
     const d = img.data, W = img.width;
     const hist = new Array(16).fill(0);
@@ -199,37 +199,60 @@
     for (let y = y0; y < y1; y++) {
       for (let x = x0; x < x1; x++) { hist[Math.min(15, lum(d, (y * W + x) * 4) >> 4)]++; n++; }
     }
-    if (!n) return false;
+    if (!n) return { flat: 0, luma: 0, above: 0 };
     let mode = 0;
     for (let b = 1; b < 16; b++) if (hist[b] > hist[mode]) mode = b;
     const flat = (hist[mode] + (hist[mode - 1] || 0) + (hist[mode + 1] || 0)) / n;
     const above = regionStats(img, { x: rc.strip.x, y: rc.strip.y - rc.strip.h * 0.6, w: rc.strip.w, h: rc.strip.h * 0.4 });
-    return flat > 0.55 && mode * 16 + 8 - above.mean > 50;
+    return { flat, luma: mode * 16 + 8, above: above.mean };
   }
 
-  /** Which card layout the screenshot uses: the one whose name strips line up with more cards. */
-  function detectLayout(img, cal) {
-    let best = 'grid', bestN = -1;
-    for (const id of Object.keys(LAYOUTS)) {
-      const n = cardRects(img.width, img.height, cal, id).filter((rc) => looksLikeStrip(img, rc)).length;
-      if (n > bestN) { best = id; bestN = n; }
-    }
-    return best;
-  }
+  /** A live card's name strip: flat and clearly brighter than the portrait above it. */
+  const liveStrip = (si) => si.flat > 0.55 && si.luma - si.above > 50;
 
-  /** Classify every slot. Returns [{index, occupied, dead, rects, stats}] */
-  function analyze(img, cal, layout) {
+  /** Classify every slot of one layout. */
+  function classify(img, cal, layout) {
     return cardRects(img.width, img.height, cal, layout).map((rc) => {
       const iconS = regionStats(img, rc.icon);
       const nameS = regionStats(img, rc.name);
       const xS = regionStats(img, rc.xmark);
-      // Empty slots are near-uniform dark panels; occupied ones have a portrait
-      // (high variance) and either a white strip (alive) or text (dead).
-      const occupied = iconS.std > 18 && (nameS.std > 25 || nameS.mean > 150);
+      const si = stripInfo(img, rc);
+      // Empty slots are near-uniform dark panels; occupied ones have a portrait (high variance) above
+      // a flat name plate: white with dark text (alive) or dimmed with light text (dead). The flat plate
+      // keeps a busy picture that isn't a meeting screen from passing as a row of cards.
+      const occupied = iconS.std > 18 && si.flat > 0.5 && (nameS.std > 25 || nameS.mean > 150);
       // Dead cards: dimmed (dark) name strip and a red X right of the portrait.
       const dead = occupied && (xS.red > 0.06 || (nameS.mean < 140 && xS.red > 0.02));
-      return { index: rc.index, occupied, dead, rects: rc, stats: { icon: iconS, name: nameS, xmark: xS } };
+      return { index: rc.index, occupied, dead, live: occupied && liveStrip(si), rects: rc, stats: { icon: iconS, name: nameS, xmark: xS } };
     });
+  }
+
+  /** Which card layout the screenshot uses: the one whose live name strips line up with more cards,
+   *  then (a screen where every card is dead) the one that finds more cards at all. */
+  function detectLayout(img, cal) {
+    let best = 'grid', bestScore = -1;
+    for (const id of Object.keys(LAYOUTS)) {
+      const slots = classify(img, cal, id);
+      const score = slots.filter((x) => x.live).length * 100 + slots.filter((x) => x.occupied).length;
+      if (score > bestScore) { best = id; bestScore = score; }
+    }
+    return best;
+  }
+
+  /** Classify every slot. Returns [{index, occupied, dead, live, rects, stats}]. A meeting always has a
+   *  few players alive; with fewer than MIN_LIVE white name strips this isn't one (or the boxes are off
+   *  the cards), and every slot counts as empty rather than reading junk off a map or a desktop. */
+  const MIN_LIVE = 3;
+  function analyze(img, cal, layout) {
+    const slots = classify(img, cal, layout);
+    if (slots.filter((x) => x.live).length < MIN_LIVE) for (const x of slots) { x.occupied = false; x.dead = false; x.live = false; }
+    return slots;
+  }
+
+  /** Cards fill the grid from the first slot; a gap means some boxes are probably off their cards. */
+  function tidyGrid(slots) {
+    const first = slots.findIndex((x) => !x.occupied);
+    return first < 0 || slots.slice(first).every((x) => !x.occupied);
   }
 
   const CJK = /[\u3400-\u9fff\uf900-\ufaff]/;
@@ -282,7 +305,7 @@
 
   const hasCJK = (s) => CJK.test(s);
 
-  const api = { hasCJK, voteName, levenshtein, snapName, LAYOUT, LAYOUTS, DEFAULT_CAL, detectLayout, transform, cardRects, regionStats, crop, nameBitmap, analyze, cleanName };
+  const api = { tidyGrid, hasCJK, voteName, levenshtein, snapName, LAYOUT, LAYOUTS, DEFAULT_CAL, detectLayout, transform, cardRects, regionStats, crop, nameBitmap, analyze, cleanName };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GGDParse = api;
 })(typeof self !== 'undefined' ? self : this);

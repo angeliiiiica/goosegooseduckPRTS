@@ -6,7 +6,13 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 
-const PORT = Number(process.argv[2] || process.env.PORT || 7777);
+// the port is the first all-digit argument, so flags such as --no-open can come first
+const portArg = process.argv.slice(2).find((a) => /^\d+$/.test(a));
+const PORT = Number(portArg || process.env.PORT || 7777);
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  console.error(`Not a valid port: ${portArg || process.env.PORT}. Usage: node server.js [port]`);
+  process.exit(1);
+}
 const ROOT = path.join(__dirname, 'public');
 
 const MIME = {

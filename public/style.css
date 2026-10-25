@@ -83,6 +83,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background-image: linear-gradient(135deg, transparent calc(100% - 15px), #ffffff55 calc(100% - 15px) calc(100% - 13px), transparent calc(100% - 13px));
 }
 .btn.primary:hover:not(:disabled) { background-color: #1092d8; border-color: transparent; }
+/* clip-path cuts away anything outside the box, the usual focus outline included: draw it inside */
+.btn.primary:focus-visible, .round-tabs button:focus-visible { outline-offset: -4px; outline-color: #fff; }
 .btn.danger { color: var(--danger); }
 .btn.danger:hover:not(:disabled) { border-color: var(--danger); }
 .icon-btn {
@@ -311,7 +313,9 @@ aside {
   background-size: 24px 24px, 24px 24px, 120px 120px, 120px 120px;
 }
 #stage::after { inset: 6px; --bs: 22px; --bk: rgba(237, 237, 237, .28); z-index: 1; }
-#board { width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+/* no text selection or native image drag: either would take a board drag over (pointercancel) */
+#board { width: 100%; height: 100%; display: block; outline: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+#board image { -webkit-user-drag: none; }
 #board.tool-select { cursor: default; }
 #board.tool-pen, #board.tool-pin, #board.tool-text { cursor: crosshair; }
 #board.tool-link { cursor: alias; }
@@ -340,8 +344,9 @@ aside {
 #viewSwitch button + button { margin-left: 2px; }
 #viewSwitch button.active { color: var(--ink); }
 #viewSwitch #netReset { margin-left: 8px; font-size: 12px; letter-spacing: .06em; color: var(--text); border: 1px solid var(--line); }
-#playbar { bottom: 62px; left: 14px; font-size: 13px; }
-#playbar #playScrub { width: 220px; }
+#playbar { bottom: 62px; left: 14px; font-size: 13px; flex-wrap: wrap; max-width: calc(100% - 28px); }
+/* the scrubber gives way first, so Stop and the timing select stay on the stage */
+#playbar #playScrub { flex: 0 1 220px; width: 220px; min-width: 60px; }
 #playbar select { width: auto; padding: 3px 24px 3px 6px; font-size: 12px; }
 #playbar button:disabled { opacity: .35; cursor: default; }
 .play-pct { min-width: 52px; text-align: right; color: var(--muted); font: 600 14px/1 var(--tech); font-variant-numeric: tabular-nums; }
@@ -365,8 +370,9 @@ aside {
 .floating .sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 5px; }
 .floating label { display: inline-flex; align-items: center; gap: 6px; padding: 0 7px; cursor: pointer; user-select: none; }
 .floating label.range input { width: 84px; }
-/* map points panel, bottom right of the stage */
-#poiPanel { bottom: 14px; right: 14px; flex-direction: column; align-items: stretch; gap: 1px; width: 190px; font-size: 13px; }
+/* map points panel, top right under the map/network switch: at the bottom it covered the view bar's
+   size slider on narrower windows */
+#poiPanel { top: 62px; right: 14px; flex-direction: column; align-items: stretch; gap: 1px; width: 190px; font-size: 13px; }
 #poiPanel .poi-head {
   display: flex; align-items: center; justify-content: space-between; height: 28px; padding: 0 8px;
   font: 700 13px/1 var(--tech); letter-spacing: .1em; text-transform: uppercase; color: var(--text);

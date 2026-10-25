@@ -11,6 +11,8 @@
   const { t, tn } = GGDI18n;
   const uid = () => Math.random().toString(36).slice(2, 10);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  /** First n characters, never splitting an emoji (slice counts UTF-16 halves). */
+  const cut = (str, n) => Array.from(str).slice(0, n).join('');
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const abs = (p) => new URL(p, location.href).href;
 
@@ -174,6 +176,13 @@
     return pin;
   }
   const newPin = (x, y, kind) => ensurePinFields({ id: uid(), x, y, kind, text: '', victim: null });
+  /** Picking a body's victim marks them dead (pin.autoDead). When the victim is changed, cleared or the
+   *  pin stops being a body, that mark is taken back, unless their status was changed since. */
+  function revertAutoDeath(pin) {
+    const p = pin.autoDead && P(pin.autoDead);
+    if (p && pin.victim === p.id && p.status === 'dead' && p.diedRound === S.roundIdx) { p.status = 'alive'; p.diedRound = null; }
+    pin.autoDead = null;
+  }
 
   // tally: votes each player received at this meeting ({pid: n, skip: n}); the game only shows counts
   // net:   hand-arranged node positions in the relationship-network view (others sit on the ring)
@@ -194,8 +203,8 @@
   }
   /** Moves every map-space mark of a game from a retired map's image onto its replacement. */
   function migrateRetiredMap(s) {
+    if (!Object.prototype.hasOwnProperty.call(RETIRED_MAPS, s.mapId)) return;
     const ret = RETIRED_MAPS[s.mapId];
-    if (!ret) return;
     const pt = (o) => { if (o && isFinite(o.x) && isFinite(o.y)) { const [x, y] = ret.to(+o.x, +o.y); o.x = +x.toFixed(1); o.y = +y.toFixed(1); } };
     const arr = (a) => (Array.isArray(a) ? a.map((q) => { const [x, y] = ret.to(+q[0], +q[1]); return [+x.toFixed(1), +y.toFixed(1)]; }) : a);
     for (const r of s.rounds) {
@@ -228,15 +237,21 @@
       p.id = str(p.id, '') || uid(); p.name = str(p.name, '?'); p.tag = str(p.tag, 'unknown');
       p.status = str(p.status, 'alive'); p.claim = str(p.claim, ''); p.notes = str(p.notes, '');
       if (!STATUSES.some((x) => x.id === p.status)) p.status = 'alive';
-      // strict === comparisons (deaths list, history, 'since' select) need an in-range integer
-      p.diedRound = p.status === 'alive' || p.diedRound == null || p.diedRound === '' || !isFinite(+p.diedRound)
-        ? null : clamp(Math.round(+p.diedRound), 0, s.rounds.length - 1);
+      // strict === comparisons (deaths list, history, 'since' select) need an in-range integer;
+      // an old save with no death round counts as dead from the first conference, as isDeadAt reads it
+      p.diedRound = p.status === 'alive' ? null
+        : p.diedRound == null || p.diedRound === '' || !isFinite(+p.diedRound) ? 0
+          : clamp(Math.round(+p.diedRound), 0, s.rounds.length - 1);
       // the app only ever writes data: icons; a remote URL from a shared file would make the offline app phone out
       if (typeof p.icon !== 'string' || !p.icon.startsWith('data:image/')) { p.icon = generatedIcon(p.name); p.iconGenerated = true; }
     }
+    // saves from before conferences were called C<n> labelled every round R<n>; only those are renamed,
+    // so a conference the user names R7 keeps its name
+    const legacyLabels = s.rounds.every((r) => /^R\d+$/.test(r.label || ''));
     s.rounds.forEach((r, i) => {
       r.id = str(r.id, '') || uid();
-      r.label = str(r.label, 'C' + (i + 1)).replace(/^R(\d+)$/, 'C$1');
+      r.label = str(r.label, 'C' + (i + 1));
+      if (legacyLabels) r.label = r.label.replace(/^R(\d+)$/, 'C$1');
       r.hasShot = !!r.hasShot;
       // screenshot key in IndexedDB, fresh per import so undoing an 'update' points back at the old shot;
       // older saves keyed shots by the round id
@@ -265,9 +280,14 @@
       for (const pin of r.pins) {
         ensurePinFields(pin);
         pin.victim = pin.victim == null ? null : String(pin.victim);
+        pin.autoDead = pin.autoDead == null ? null : String(pin.autoDead);
         pin.players = pin.players.filter((x) => x != null).map(String);
-        // 1.1 events shared the body form, so an event could name a "victim": keep them as involved
-        if (pin.kind === 'event' && pin.victim && !pin.players.length) pin.players = [pin.victim];
+        // 1.1 events shared the body form, so an event could name a "victim": keep them as involved.
+        // Switching a pin to event moves its victim the same way, so only such old saves still hold one.
+        if (pin.kind === 'event' && pin.victim) {
+          if (!pin.players.length) pin.players = [pin.victim];
+          pin.victim = null;
+        }
       }
     });
     migrateRetiredMap(s); // after the shapes above are guaranteed
@@ -364,6 +384,8 @@
     cancelDrag();
     resetPlay();
     if (ui.sel && !selectionExists()) ui.sel = null;
+    // undoing a map deletion brings back its id but not its image
+    if (deletedMaps.has(S.mapId)) { S.mapId = MAPS[0].id; toast(t('toast.mapGone', { name: mapName(MAPS[0]) })); }
     save(); render();
   }
   // dirty: this tab has a change not yet in localStorage. A tab with nothing pending never writes,
@@ -380,8 +402,30 @@
     if (LS.set(K.state, S)) dirty = false;
     else toast(t('toast.storageFull'));
   }
-  const savePrefs = () => LS.set(K.prefs, prefs);
-  function mutate(fn, opts) { checkpoint(); fn(); save(); render(opts); }
+  // Another tab may have changed other settings since this one loaded them: write back only the
+  // settings this tab changed, over whatever is stored now.
+  let prefsBase = JSON.parse(JSON.stringify(prefs));
+  function savePrefs() {
+    const stored = LS.get(K.prefs, {});
+    const out = stored && typeof stored === 'object' ? stored : {};
+    for (const k of Object.keys(prefs)) {
+      if (JSON.stringify(prefs[k]) !== JSON.stringify(prefsBase[k])) out[k] = prefs[k];
+    }
+    if (LS.set(K.prefs, out)) prefsBase = JSON.parse(JSON.stringify(prefs));
+  }
+  /** Runs fn as one undoable change. A change that leaves the game as it was (re-clicking the active
+   *  option, renaming to the same name) adds no undo step, so it can't wipe the redo history. */
+  function mutate(fn, opts) {
+    const before = JSON.stringify(S);
+    fn();
+    if (JSON.stringify(S) !== before) {
+      undoStack.push(before);
+      if (undoStack.length > 60) undoStack.shift();
+      redoStack.length = 0;
+      save();
+    }
+    render(opts);
+  }
 
   function knownNames() {
     const set = new Set(LS.get(K.known, []));
@@ -446,6 +490,7 @@
   // maps
   // ======================================================================
   let customMaps = [];
+  const deletedMaps = new Set(); // custom map ids deleted in this tab
   async function loadCustomMaps() {
     try {
       const rows = await idb.maps.all();
@@ -457,9 +502,16 @@
     } catch (e) { console.warn('IndexedDB unavailable', e); }
   }
   const allMaps = () => [...MAPS, ...customMaps];
+  /** False when the game names a custom map whose image isn't in this browser (another computer's save). */
+  const mapAvailable = () => allMaps().some((m) => m.id === S.mapId);
   const currentMap = () => allMaps().find((m) => m.id === S.mapId) || MAPS[0];
 
   let mapKey = null;
+  let mapPending = null; // settles when the map image being loaded is on the board (or failed)
+  /** Waits for the current map image, so an export never snapshots the board between two maps. */
+  async function mapLoaded() {
+    for (let p = mapPending; p; p = p === mapPending ? null : mapPending) await p;
+  }
   function ensureMap() {
     const m = currentMap();
     const src = m.src || m.url || null;
@@ -475,7 +527,10 @@
       return;
     }
     const img = new Image();
+    let settle;
+    mapPending = new Promise((res) => { settle = res; });
     img.onload = () => {
+      settle();
       if (mapKey !== key) return;
       ui.mapSize = { w: img.naturalWidth, h: img.naturalHeight };
       L.map.innerHTML = '';
@@ -484,6 +539,7 @@
       renderBoard();
     };
     img.onerror = () => {
+      settle();
       // keep mapKey (retrying an undecodable image only repeats the toast); show the sized grid placeholder
       if (mapKey !== key) return;
       const blank = MAPS.find((x) => x.id === 'blank');
@@ -499,6 +555,8 @@
   }
 
   async function uploadMap(file) {
+    // an SVG without its own pixel size loads as a 300x150 box, so the map would be cut off or tiny
+    if (!/^image\/(png|jpeg|webp|gif|bmp|avif)$/.test(file.type)) return toast(t('toast.imageUnsupported'));
     const name = await promptText('map.nameTitle', 'map.nameMsg', file.name.replace(/\.[^.]+$/, ''));
     if (name === null) return;
     const id = 'custom-' + uid();
@@ -519,15 +577,17 @@
     const v = ui.view;
     vp.setAttribute('transform', `translate(${v.x},${v.y}) scale(${v.k})`);
   }
+  /** Frames the board; false when the stage is too small to frame anything (nothing changes then). */
   function fit() {
     const r = svg.getBoundingClientRect();
-    if (r.width < 10 || r.height < 10) return;
     const b = boardBounds(), pad = 24;
     let k = Math.min((r.width - pad * 2) / b.w, (r.height - pad * 2) / b.h);
+    if (!(k > 0) || !isFinite(k)) return false;
     if (isNet()) k = Math.min(k, 2); // a small table shouldn't blow up to giant tokens
     ui.view = { k, x: (r.width - b.w * k) / 2 - b.x * k, y: (r.height - b.h * k) / 2 - b.y * k };
     ui.fitK = k;
     applyView();
+    return true;
   }
   function zoomAt(mx, my, factor) {
     const v = ui.view;
@@ -722,7 +782,12 @@
   /** Curved connector between two token centres, trimmed to the token rims. */
   function connPath(A, B, off, trimA, trimB) {
     const dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy);
-    if (len < trimA + trimB + 4) return null;
+    if (len < 1) return null;
+    // tokens close together: shorten the trims so the link still shows between them
+    if (len < trimA + trimB + 4) {
+      const f = Math.max(0, (len - 4) / (trimA + trimB));
+      trimA *= f; trimB *= f;
+    }
     const nx = -dy / len, ny = dx / len;
     const cx = (A.x + B.x) / 2 + nx * off * 2, cy = (A.y + B.y) / 2 + ny * off * 2;
     const trim = (p, t) => {
@@ -1049,23 +1114,54 @@
   }
 
   /** Ends a board drag without committing it: for anything that changes the board under a live drag
-   *  (conference/view switch, undo/redo, another tab's state). A move already applied stays, saved. */
+   *  (conference/view switch, undo/redo, another tab's state). A move or erasure already applied stays, saved. */
   function cancelDrag() {
     if (!drag) return;
     const d = drag;
     drag = null;
     svg.classList.remove('panning');
     L.temp.innerHTML = '';
-    if (d.type === 'move' && d.moved) save();
+    if ((d.type === 'move' && d.moved) || (d.type === 'erase' && d.erased)) save();
+  }
+
+  /** The browser took the gesture over (pointercancel): its end point is unknown, so nothing drawn is
+   *  committed and a moved item goes back where it was. Erasures already shown stay. */
+  function onCancel(e) {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const d = drag;
+    drag = null;
+    svg.classList.remove('panning');
+    try { svg.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+    L.temp.innerHTML = '';
+    if (d.type === 'move' && d.moved) {
+      const pos = itemPos(d.kind, d.id);
+      if (pos) { pos.x = d.ox; pos.y = d.oy; }
+      undoStack.pop(); // the step the move pushed when it started
+      renderBoard();
+    } else if (d.type === 'erase' && d.erased) {
+      save(); render();
+    }
   }
 
   function startPan(e, deselect) {
-    drag = { type: 'pan', sx: e.clientX, sy: e.clientY, vx: ui.view.x, vy: ui.view.y, moved: false, deselect };
+    // lx/ly: last pointer position; the view moves by increments so a zoom or fit mid-pan isn't undone
+    drag = { type: 'pan', sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, moved: false, deselect };
     svg.classList.add('panning');
     svg.setPointerCapture(e.pointerId);
   }
 
   function onDown(e) {
+    if (drag) {
+      if (e.pointerId !== drag.pointerId) return; // a second finger or pen: the live drag keeps going
+      cancelDrag(); // this pointer's release was lost: end that drag before starting the next
+    }
+    // the browser's own text selection or image drag would take the gesture over (pointercancel)
+    if (e.button === 0) e.preventDefault();
+    downOnBoard(e);
+    if (drag) drag.pointerId = e.pointerId;
+  }
+
+  function downOnBoard(e) {
     svg.focus({ preventScroll: true });
     const hit = e.target.closest ? e.target.closest('[data-kind]') : null;
     const kind = hit && hit.dataset.kind;
@@ -1099,6 +1195,7 @@
       // whose route: the token/path under the pointer, else the selected player
       const pid = (kind === 'token' || kind === 'path') ? id : (ui.sel && ui.sel.kind === 'player' ? ui.sel.id : null);
       if (!pid) { toast(t('toast.pathStart')); return; }
+      if (hiddenDead(pid)) { toast(t('toast.deadHidden')); return; }
       const r = R();
       const old = r.paths[pid];
       const extend = e.shiftKey && old && old.length >= 2;
@@ -1150,11 +1247,11 @@
   }
 
   function onMove(e) {
-    if (!drag) return;
+    if (!drag || e.pointerId !== drag.pointerId) return;
     if (drag.type === 'pan') {
-      const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
-      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-      ui.view.x = drag.vx + dx; ui.view.y = drag.vy + dy;
+      if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 3) drag.moved = true;
+      ui.view.x += e.clientX - drag.lx; ui.view.y += e.clientY - drag.ly;
+      drag.lx = e.clientX; drag.ly = e.clientY;
       applyView();
       return;
     }
@@ -1187,7 +1284,7 @@
   }
 
   function onUp(e) {
-    if (!drag) return;
+    if (!drag || e.pointerId !== drag.pointerId) return;
     const d = drag;
     drag = null;
     svg.classList.remove('panning');
@@ -1288,12 +1385,20 @@
     zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-delta * 0.0015));
   }
 
+  /** A dead player while dead players are hidden: their token isn't drawn, so they can't be placed. */
+  const hiddenDead = (pid) => { const p = P(pid); return !!p && !prefs.showDead && isDeadAt(p); };
+
+  /** Returns false when the player can't be placed (hidden dead player). */
   function placePlayer(pid, pos) {
+    if (hiddenDead(pid)) { toast(t('toast.deadHidden')); return false; }
+    stopPlay(); // a playback frame would draw them on their old route instead of where they were dropped
     mutate(() => { R().positions[pid] = { x: +pos.x.toFixed(1), y: +pos.y.toFixed(1) }; });
+    return true;
   }
 
   function placeUnplaced() {
     if (isNet()) setView('map'); // new positions are map positions: place them where the user can see them
+    stopPlay();
     const r = R(), TR = prefs.tokenR;
     const todo = S.players.filter((p) => !r.positions[p.id] && (prefs.showDead || !isDeadAt(p)));
     if (!todo.length) return toast(t('toast.allPlaced'));
@@ -1377,9 +1482,11 @@
   function setStatus(pid, status) {
     const p = P(pid);
     if (!p || p.status === status) return;
+    const wasAlive = p.status === 'alive';
     mutate(() => {
       p.status = status;
-      p.diedRound = status === 'alive' ? null : (p.diedRound ?? S.roundIdx);
+      // going out: from this conference; dead <-> ejected keeps the conference already recorded
+      p.diedRound = status === 'alive' ? null : wasAlive ? S.roundIdx : p.diedRound;
     });
   }
   /**
@@ -1414,6 +1521,8 @@
     stopPlay();
     prefs.view = v;
     if (v === 'net' && !NET_TOOLS.includes(prefs.tool)) prefs.tool = 'select';
+    // pins, notes and drawings aren't drawn in the network: don't leave one selected (Delete would remove it unseen)
+    if (v === 'net' && ui.sel && ['pin', 'text', 'stroke'].includes(ui.sel.kind)) { ui.sel = null; renderRoster(); renderInspector(); }
     savePrefs();
     L.temp.innerHTML = '';
     renderHeader();
@@ -1445,6 +1554,8 @@
     renderRoster();
     if (opts.keep !== 'inspector') renderInspector();
     if (opts.keep !== 'round') renderRoundPanel();
+    // undo or another tab can change the conference behind the import dialog: its buttons name it
+    if ($('#importDlg').open) updateImportButtons();
   }
 
   function renderHeader() {
@@ -1577,7 +1688,7 @@
         <div class="ins-head ${dead ? 'dead' : ''}">
           <img src="${esc(p.icon || '')}" style="border-color:${tg.color}" alt="">
           <div class="stack" style="flex:1;min-width:0">
-            <input class="name-input" data-f="name" value="${esc(p.name)}" spellcheck="false">
+            <input class="name-input" data-f="name" value="${esc(p.name)}" maxlength="20" spellcheck="false">
             <div class="muted">${esc(t(r.positions[p.id] ? 'ins.onMap' : 'ins.notPlaced', { label: r.label }))}</div>
           </div>
         </div>
@@ -1724,7 +1835,7 @@
     const voteBlock = S.players.length
       ? `<div class="muted vote-hint">${esc(t('conf.voteHint'))}</div>
          <div class="votes">${listed.map((p) => voteRow(p.id, esc(p.name), p.icon || '')).join('')}${voteRow('skip', `<i>${esc(t('conf.skip'))}</i>`, null)}</div>
-         <div class="vote-total ${total > voters.length ? 'over' : ''}">${esc(t('conf.voteTotal', { total, voters: voters.length }))}</div>`
+         <div class="vote-total ${total > voters.length ? 'over' : ''}">${esc(tn('conf.voteTotal', voters.length, { total, voters: voters.length }))}</div>`
       : `<div class="muted">${esc(t('conf.importFirst'))}</div>`;
     const deaths = S.players.filter((p) => p.status !== 'alive' && p.diedRound === S.roundIdx);
     const bodies = r.pins.filter((p) => p.kind === 'body');
@@ -1743,7 +1854,7 @@
       : `<div class="muted">${esc(t('conf.noEvents'))}</div>`;
 
     el.innerHTML = `
-      <div class="row"><input data-r="label" value="${esc(r.label)}" style="font-weight:700"><span class="muted" style="white-space:nowrap">${S.roundIdx + 1} / ${S.rounds.length}</span></div>
+      <div class="row"><input data-r="label" value="${esc(r.label)}" maxlength="24" style="font-weight:700"><span class="muted" style="white-space:nowrap">${S.roundIdx + 1} / ${S.rounds.length}</span></div>
       <div class="row conf-nav">
         <button class="btn small" data-act="prevConf" ${S.roundIdx === 0 ? 'disabled' : ''}>${esc(t('conf.prev'))}</button>
         <button class="btn small" data-act="nextConf" ${S.roundIdx >= S.rounds.length - 1 ? 'disabled' : ''}>${esc(t('conf.next'))}</button>
@@ -1808,7 +1919,9 @@
       for (const p of S.players) {
         if (p.diedRound == null) continue;
         if (p.diedRound > gone) p.diedRound--;
-        else if (p.diedRound === gone) p.diedRound = Math.max(0, gone - 1);
+        // out at the deleted meeting: they were still in the one before it, so they go out at the one
+        // after it (now at the same index); with no conference after it they were never seen out
+        else if (p.diedRound === gone && gone >= S.rounds.length) { p.status = 'alive'; p.diedRound = null; }
       }
       S.roundIdx = clamp(gone, 0, S.rounds.length - 1);
       ui.sel = null;
@@ -1830,9 +1943,21 @@
       if (!row) return null;
       if (shotCache.has(sid)) return shotCache.get(sid); // an overlapping call got here first
       const u = URL.createObjectURL(row.blob);
-      shotCache.set(sid, u);
+      cacheShot(sid, u);
       return u;
     } catch { return null; }
+  }
+  /** Keeps at most SHOT_CACHE object URLs, dropping ones the current game no longer points at
+   *  (deleted conferences, replaced screenshots, earlier games); they reload from IndexedDB if needed. */
+  const SHOT_CACHE = 24;
+  function cacheShot(sid, u) {
+    shotCache.set(sid, u);
+    for (const [k, url] of shotCache) {
+      if (shotCache.size <= SHOT_CACHE) break;
+      if (k === sid || k === shotSid || S.rounds.some((r) => r.shotId === k)) continue;
+      URL.revokeObjectURL(url);
+      shotCache.delete(k);
+    }
   }
   function saveShot(sid, canvas) {
     const pr = (async () => {
@@ -1906,7 +2031,7 @@
     x.fillStyle = '#fff';
     x.font = `700 40px ${FONT}`;
     x.textAlign = 'center'; x.textBaseline = 'middle';
-    x.fillText(name.slice(0, 2).toUpperCase(), 48, 52);
+    x.fillText(cut(name, 2).toUpperCase(), 48, 52);
     return canvasToIcon(c);
   }
   async function fileToSquareIcon(file) {
@@ -1937,7 +2062,7 @@
   function resetImport() {
     imp.runId++; imp.loadId++;
     clearTimeout(calTimer);
-    imp.img = null; imp.src = null; imp.slots = []; imp.rows = []; imp.layout = 'auto'; imp.detected = null;
+    imp.img = null; imp.src = null; imp.slots = []; imp.rows = []; imp.layout = 'auto'; imp.detected = null; imp.reading = false;
     const c = $('#importCanvas');
     c.width = 0; c.height = 0;
     $('#importEmpty').classList.remove('hidden');
@@ -1948,7 +2073,11 @@
 
   function openImport(blob) {
     const dlg = $('#importDlg');
-    if (!dlg.open) { resetImport(); dlg.showModal(); }
+    if (!dlg.open) {
+      // another tab may have calibrated since this one loaded
+      imp.cal = Object.assign({}, GGDParse.DEFAULT_CAL, LS.get(K.cal, {}));
+      resetImport(); dlg.showModal();
+    }
     syncCalUI();
     updateImportButtons();
     if (blob) loadImportImage(blob);
@@ -1956,7 +2085,6 @@
 
   async function loadImportImage(blob) {
     const id = ++imp.loadId;
-    imp.runId++; // a new image: a run on the old one must not overwrite this load's status
     try {
       const bmp = await createImageBitmap(blob);
       if (id !== imp.loadId) return; // a newer image (or a reset) came in while this one decoded
@@ -1971,7 +2099,8 @@
     } catch (e) {
       if (id !== imp.loadId) return;
       console.error(e);
-      resetImport(); // the old image's OCR was stopped: don't leave its half-read rows importable
+      // the screenshot already on screen (and the names typed for it) stays
+      if (!imp.img) resetImport();
       setImportStatus('import.badImage');
       updateImportButtons();
     }
@@ -1987,15 +2116,28 @@
     $('#importStatus').textContent = st.plural != null ? tn(st.key, st.plural, st.vars) : t(st.key, st.vars);
   }
 
-  function analyzeImport() {
+  /** keepEdits: same image re-read after a calibration or layout change. A slot is the same player
+   *  in every layout, so names typed and boxes ticked by hand carry over by slot. */
+  function analyzeImport(keepEdits) {
     if (!imp.img) return;
     imp.runId++; // the rows are rebuilt: stop any OCR still reading the old ones (runOcr bumps it again)
+    const before = new Map(keepEdits ? imp.rows.map((r) => [r.slot, r]) : []);
     analyzeSlots();
     drawImportPreview();
-    imp.rows = imp.slots.filter((s) => s.occupied).map((s) => ({
-      slot: s.index, include: true, dead: s.dead, name: '', ocr: '', conf: null, snapped: null, touched: false,
-      icon: canvasToIcon(imageDataToCanvas(GGDParse.crop(imp.img, s.rects.icon, 96, 96))),
-    }));
+    imp.rows = imp.slots.filter((s) => s.occupied).map((s) => {
+      const row = {
+        slot: s.index, include: true, dead: s.dead, name: '', ocr: '', conf: null, snapped: null, touched: false, deadTouched: false,
+        icon: canvasToIcon(imageDataToCanvas(GGDParse.crop(imp.img, s.rects.icon, 96, 96))),
+      };
+      const old = before.get(s.index);
+      if (old) {
+        row.include = old.include;
+        if (old.touched) { row.name = old.name; row.touched = true; }
+        if (old.deadTouched) { row.dead = old.dead; row.deadTouched = true; }
+      }
+      return row;
+    });
+    imp.reading = imp.rows.length > 0;
     renderImportRows();
     updateImportButtons();
     if (!imp.rows.length) {
@@ -2048,8 +2190,8 @@
     return snap ? pool.find((p) => p.name.toUpperCase() === snap) : null;
   }
 
-  /** The name a row is imported under: typed, else OCR, else the P<slot> placeholder. */
-  const importName = (row) => (row.name.trim() || row.ocr || `P${row.slot + 1}`).slice(0, 20);
+  /** The name a row is imported under: as in its field, or the P<slot> placeholder its field shows when empty. */
+  const importName = (row) => cut(row.name.trim() || `P${row.slot + 1}`, 20);
 
   /** Maps import rows to the existing players they update. Exact names claim first, then fuzzy
    *  matches among the unclaimed; one card never merges into a player another card took, and
@@ -2062,7 +2204,7 @@
       claim(row, S.players.find((p) => !claimed.has(p) && p.name.toUpperCase() === n));
     }
     for (const row of rows) {
-      if (match.has(row) || !(row.name.trim() || row.ocr)) continue;
+      if (match.has(row) || !row.name.trim()) continue;
       claim(row, findExisting(importName(row), S.players.filter((p) => !claimed.has(p))));
     }
     return match;
@@ -2093,13 +2235,14 @@
     const div = $(`#importRows .i-row[data-i="${i}"]`);
     if (!div) return;
     const inp = div.querySelector('[data-name]');
-    if (document.activeElement !== inp) inp.value = row.name;
+    // a field being typed in keeps its text; one only focused still shows the name OCR fills in
+    if (document.activeElement !== inp || !row.touched) inp.value = row.name;
     inp.placeholder = row.conf == null ? t('import.row.reading') : t('import.row.typeNameBlank', { n: row.slot + 1 });
     const ex = row.name.trim() ? matchImportRows(imp.rows.filter((r) => r.include || r === row)).get(row) : null;
     const bits = [];
     if (row.conf != null) bits.push(`<span class="conf ${row.conf < 60 ? 'low' : ''}">${Math.round(row.conf)}%</span>`);
     if (row.snapped) bits.push(`<span title="${esc(t('import.row.snapped'))}">${esc(t('import.row.ocr', { text: row.ocr }))}</span>`);
-    if (S.players.length && row.name) bits.push(ex ? `<span class="match">${esc(t('import.row.match', { name: ex.name }))}</span>` : `<span>${esc(t('import.row.new'))}</span>`);
+    if (S.players.length && row.name.trim()) bits.push(ex ? `<span class="match">${esc(t('import.row.match', { name: ex.name }))}</span>` : `<span>${esc(t('import.row.new'))}</span>`);
     div.querySelector('.i-meta').innerHTML = bits.join('');
   }
 
@@ -2118,6 +2261,10 @@
   async function getWorker(lang) {
     if (!imp.workers[lang]) {
       const p = imp.workers[lang] = (async () => {
+        // tesseract never settles when its language file fails to download: find that out first,
+        // so the load fails at once (and a retry starts fresh) instead of hanging until the timeout
+        const head = await fetch(abs(`vendor/lang/${lang}.traineddata.gz`), { method: 'HEAD' });
+        if (!head.ok) throw new Error(`${lang} language data: HTTP ${head.status}`);
         const w = await Tesseract.createWorker(lang, 1, {
           workerPath: abs('vendor/tesseract/worker.min.js'),
           corePath: abs('vendor/core'),
@@ -2157,6 +2304,7 @@
         }
       }
       if (id !== imp.runId) return;
+      imp.reading = false; // names can still be typed by hand
       setImportStatus(location.protocol === 'file:' ? 'import.needServer' : 'import.ocrFailed');
       imp.rows.forEach((r, i) => { r.conf = 0; updateImportRowMeta(i); });
       updateImportButtons();
@@ -2196,13 +2344,35 @@
       if (!row.touched) row.name = snapped || v.name;
       imp.rows.forEach((_, j) => updateImportRowMeta(j)); // this name can take another row's match
     }
+    unsnapCollisions();
+    imp.reading = false;
+    imp.rows.forEach((_, j) => updateImportRowMeta(j));
     const dead = imp.rows.filter((r) => r.dead).length;
-    setImportStatus('import.found', { dead }, imp.rows.length);
+    // the card grid is measured on 16:9, and cards fill it from the first slot: otherwise the boxes
+    // probably miss some cards, so ask for a look at them (Calibration) before the names
+    const odd = Math.abs(imp.img.width / imp.img.height - 16 / 9) > 0.04 || !GGDParse.tidyGrid(imp.slots);
+    setImportStatus(odd ? 'import.foundCheck' : 'import.found', { dead }, imp.rows.length);
     updateImportButtons();
   }
 
+  /** A row snapped to a known name that another card in this screenshot also shows (read exactly or
+   *  snapped too) would merge two players into one: those rows keep what OCR read. */
+  function unsnapCollisions() {
+    const count = new Map();
+    for (const r of imp.rows) {
+      const n = r.name.trim().toUpperCase();
+      if (n) count.set(n, (count.get(n) || 0) + 1);
+    }
+    for (const r of imp.rows) {
+      if (r.touched || !r.snapped || count.get(r.snapped.toUpperCase()) < 2) continue;
+      r.name = r.ocr;
+      r.snapped = null;
+    }
+  }
+
   function updateImportButtons() {
-    const any = imp.rows.some((r) => r.include);
+    // not while names are still being read: unread rows would come in as P1, P2...
+    const any = imp.rows.some((r) => r.include) && !imp.reading;
     const hasGame = S.players.length > 0;
     $('#importNew').disabled = !any;
     $('#importUpdate').disabled = !any || !hasGame;
@@ -2213,11 +2383,17 @@
     $('#importNext').classList.toggle('primary', hasGame);
   }
 
+  /** Whether 'Start new game' would throw anything away: players, or marks on a board with none yet. */
+  function boardHasContent() {
+    return S.players.length > 0 || S.rounds.length > 1 || S.rounds.some((r) => r.hasShot || r.notes
+      || r.pins.length || r.texts.length || r.strokes.length || r.links.length || Object.keys(r.paths).length);
+  }
+
   /** mode: 'new' game | 'next' conference | 'update' the current conference */
   async function applyImport(mode) {
     const rows = imp.rows.filter((r) => r.include);
     if (!rows.length) return;
-    if (mode === 'new' && S.players.length && !confirm(t('import.confirmNew'))) return;
+    if (mode === 'new' && boardHasContent() && !confirm(t('import.confirmNew'))) return;
     imp.runId++; // stop any OCR still running
     checkpoint();
     if (mode !== 'update') resetPlay(); // a fresh board has no paths to play
@@ -2236,6 +2412,7 @@
         p = { id: uid(), name, icon: row.icon, status: row.dead ? 'dead' : 'alive', diedRound: row.dead ? S.roundIdx : null, tag: 'unknown', claim: '', notes: '' };
         S.players.push(p);
         added++;
+        if (row.dead) died++;
       } else {
         // time-aware, like quickStatus: a death shown here supersedes a later recorded death or ejection
         if (row.dead && !isDeadAt(p, S.roundIdx)) { p.status = 'dead'; p.diedRound = S.roundIdx; died++; }
@@ -2253,6 +2430,7 @@
     // Started before render() so pendingShots already holds it when the thumbnail asks for it.
     saveShot(sid, imp.src).catch((e) => {
       console.warn('screenshot not stored', e);
+      toast(t('toast.shotNotSaved'));
       const target = S.rounds.find((x) => x.shotId === sid); // S may have been swapped by undo meanwhile
       if (!target) return;
       target.shotId = prevSid || target.id; target.hasShot = prevHas;
@@ -2276,7 +2454,7 @@
     imp.layout = $('#calLayout').value;
     if (!imp.img) return syncLayoutUI();
     clearTimeout(calTimer);
-    analyzeImport();
+    analyzeImport(true);
   }
 
   function syncCalUI() {
@@ -2294,7 +2472,7 @@
     analyzeSlots();
     drawImportPreview();
     clearTimeout(calTimer);
-    calTimer = setTimeout(() => { if ($('#importDlg').open) analyzeImport(); }, 450);
+    calTimer = setTimeout(() => { if ($('#importDlg').open) analyzeImport(true); }, 450);
   }
 
   // ======================================================================
@@ -2309,6 +2487,7 @@
     });
   }
   async function exportPng() {
+    await mapLoaded(); // a map still decoding would be missing from the picture, and its size unknown
     // map view: the whole map image; network view: the frame around the ring
     const b = boardBounds();
     const w = Math.round(b.w), h = Math.round(b.h);
@@ -2378,7 +2557,8 @@
       const sids = {};
       for (const r of s.rounds) { r.shotId = uid(); sids[r.id] = r.shotId; }
       for (const [rid, url] of Object.entries(shots || {})) {
-        if (!sids[rid] || typeof url !== 'string' || !url.startsWith('data:image/')) continue; // never fetch a remote URL
+        // never fetch a remote URL; raster only: an SVG shot opened in its own tab would run its scripts here
+        if (!sids[rid] || typeof url !== 'string' || !/^data:image\/(png|jpeg|webp|gif);base64,/i.test(url)) continue;
         try {
           await idb.shots.put({ id: sids[rid], blob: await (await fetch(url)).blob() });
         } catch { /* skip broken shot */ }
@@ -2390,7 +2570,7 @@
       // persist only a game that renders, so a bad file can't break the next boot
       try { render(); } catch (e) { S = prev; undoStack.pop(); render(); throw e; }
       save();
-      toast(t('toast.loaded'));
+      toast(mapAvailable() ? t('toast.loaded') : t('toast.loadedNoMap', { name: mapName(currentMap()) }));
     } catch (e) {
       toast(t('toast.loadFailed', { msg: e instanceof SyntaxError ? t('toast.badJson') : e.message }));
     }
@@ -2416,7 +2596,7 @@
     svg.addEventListener('pointerdown', onDown);
     svg.addEventListener('pointermove', onMove);
     svg.addEventListener('pointerup', onUp);
-    svg.addEventListener('pointercancel', onUp);
+    svg.addEventListener('pointercancel', onCancel);
     svg.addEventListener('wheel', onWheel, { passive: false });
     svg.addEventListener('contextmenu', (e) => e.preventDefault());
     svg.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); }); // no autoscroll
@@ -2435,7 +2615,8 @@
       placePlayer(pid, toWorld(e));
       select('player', pid);
     });
-    new ResizeObserver(() => { if (!ui.fitted) { ui.fitted = true; fit(); } }).observe(svg);
+    // until one fit succeeds (a tiny window can't be framed), retry on every resize
+    new ResizeObserver(() => { if (!ui.fitted) ui.fitted = fit(); }).observe(svg);
 
     // toolbar
     $('#toolbar').addEventListener('click', (e) => {
@@ -2483,6 +2664,7 @@
       if (!m.custom || !confirm(t('map.confirmDelete', { name: m.name }))) return;
       try { await idb.maps.del(m.id); } catch { /* session-only map */ }
       customMaps = customMaps.filter((x) => x.id !== m.id);
+      deletedMaps.add(m.id); // undo can bring the game back but not the image
       mutate(() => { S.mapId = MAPS[0].id; });
       URL.revokeObjectURL(m.url); // after render(): ensureMap has already dropped the <image> using it
     };
@@ -2490,9 +2672,11 @@
     $('#roundTabs').addEventListener('dblclick', async (e) => {
       const b = e.target.closest('[data-ri]');
       if (!b) return;
-      const r = S.rounds[+b.dataset.ri];
-      const name = await promptText('conf.rename', null, r.label);
-      if (name) mutate(() => { r.label = name.slice(0, 24); });
+      const id = S.rounds[+b.dataset.ri].id;
+      const name = await promptText('conf.rename', null, S.rounds[+b.dataset.ri].label);
+      // S may have been replaced while the prompt was open (undo, another tab): find the round again
+      const r = S.rounds.find((x) => x.id === id);
+      if (name && r) mutate(() => { r.label = cut(name, 24); });
     });
     $('#importBtn').onclick = () => openImport();
     // every language switch (top bar + inside the import dialog)
@@ -2511,7 +2695,7 @@
         if (confirm(t('confirm.newGame'))) mutate(() => { S = newGame(S.mapId); ui.sel = null; resetPlay(); });
       } else if (act === 'addPlayer') {
         const name = await promptText('prompt.addPlayer', 'prompt.addPlayerMsg');
-        if (name) mutate(() => S.players.push({ id: uid(), name: name.slice(0, 20), icon: generatedIcon(name), iconGenerated: true, status: 'alive', diedRound: null, tag: 'unknown', claim: '', notes: '' }));
+        if (name) mutate(() => S.players.push({ id: uid(), name: cut(name, 20), icon: generatedIcon(name), iconGenerated: true, status: 'alive', diedRound: null, tag: 'unknown', claim: '', notes: '' }));
       } else if (act === 'exportPng') {
         exportPng().catch((err) => { console.error(err); toast(t('toast.pngFailed')); });
       } else if (act === 'saveJson') saveJson().catch((err) => { console.error(err); toast(t('toast.saveFailed')); });
@@ -2536,14 +2720,20 @@
       }
       const qs = e.target.closest('[data-qstatus]');
       if (qs) return quickStatus(pid, qs.dataset.qstatus);
+      // select() rebuilds the list, so the second click of a double-click lands on a new row and the
+      // browser never fires dblclick there: the click count does the job
+      if (e.detail === 2) return placeFromRoster(pid);
       select('player', pid);
       const pos = isNet() ? netPos(pid) : R().positions[pid];
       if (pos) centerOn(pos);
     });
+    const placeFromRoster = (pid) => {
+      if (isNet() || R().positions[pid]) return;
+      if (placePlayer(pid, viewCenterWorld())) select('player', pid);
+    };
     rl.addEventListener('dblclick', (e) => {
       const it = e.target.closest('[data-pid]');
-      if (!it || isNet() || e.target.closest('[data-qstatus], [data-cycle]') || R().positions[it.dataset.pid]) return;
-      placePlayer(it.dataset.pid, viewCenterWorld());
+      if (it && !e.target.closest('[data-qstatus], [data-cycle]')) placeFromRoster(it.dataset.pid);
     });
     rl.addEventListener('dragstart', (e) => {
       const it = e.target.closest('[data-pid]');
@@ -2573,7 +2763,13 @@
         const obj = s.kind === 'player' ? P(s.id) : s.kind === 'pin' ? r.pins.find((x) => x.id === s.id)
           : s.kind === 'text' ? r.texts.find((x) => x.id === s.id) : s.kind === 'link' ? r.links.find((x) => x.id === s.id) : null;
         if (!obj) return;
-        obj[f] = f === 'name' ? e.target.value.slice(0, 20) : e.target.value;
+        if (f === 'name') {
+          // an emptied field keeps the last name (a nameless player would reload as '?')
+          const name = cut(e.target.value.trim(), 20);
+          if (!name) return;
+          obj.name = name;
+          if (obj.iconGenerated) obj.icon = generatedIcon(name); // initials follow the name
+        } else obj[f] = e.target.value;
         save(); renderBoard(); renderRoster();
         if (s.kind === 'pin') renderRoundPanel();
       } else if (e.target.dataset.size !== undefined) {
@@ -2589,9 +2785,13 @@
         const pin = r.pins.find((x) => x.id === s.id);
         const vid = e.target.value || null;
         mutate(() => {
+          revertAutoDeath(pin);
           pin.victim = vid;
           const v = vid && P(vid);
-          if (v && v.status === 'alive' && pin.kind === 'body') { v.status = 'dead'; v.diedRound = S.roundIdx; toast(t('toast.markedDead', { name: v.name })); }
+          if (v && v.status === 'alive' && pin.kind === 'body') {
+            v.status = 'dead'; v.diedRound = S.roundIdx; pin.autoDead = v.id;
+            toast(t('toast.markedDead', { name: v.name }));
+          }
         });
       } else if (e.target.dataset.died !== undefined) {
         const p = P(s.id);
@@ -2608,7 +2808,20 @@
       const r = R();
       if (b.dataset.tag) return setTag(s.id, b.dataset.tag);
       if (b.dataset.status) return setStatus(s.id, b.dataset.status);
-      if (b.dataset.pkind) { const pin = r.pins.find((x) => x.id === s.id); return mutate(() => { pin.kind = b.dataset.pkind; ensurePinFields(pin); }); }
+      if (b.dataset.pkind) {
+        const pin = r.pins.find((x) => x.id === s.id);
+        return mutate(() => {
+          if (b.dataset.pkind === pin.kind) return;
+          if (b.dataset.pkind === 'event') {
+            // an event has no victim: the body's victim becomes an involved player, as old saves load it
+            revertAutoDeath(pin);
+            if (pin.victim && !pin.players.includes(pin.victim)) pin.players = [...pin.players, pin.victim];
+            pin.victim = null;
+          }
+          pin.kind = b.dataset.pkind;
+          ensurePinFields(pin);
+        });
+      }
       if (b.dataset.ptime) {
         // clicking the active phase again clears the time
         const pin = r.pins.find((x) => x.id === s.id);
@@ -2642,9 +2855,10 @@
       if (act === 'icon') {
         const f = await pickFile('image/*');
         if (!f) return;
-        const icon = await fileToSquareIcon(f);
-        const p = P(s.id);
-        mutate(() => { p.icon = icon; p.iconGenerated = false; });
+        let icon;
+        try { icon = await fileToSquareIcon(f); } catch (err) { console.warn(err); return toast(t('toast.imageUnsupported')); }
+        const p = P(s.id); // the player may have been deleted while the image decoded
+        if (p) mutate(() => { p.icon = icon; p.iconGenerated = false; });
       }
     });
 
@@ -2655,8 +2869,16 @@
     rp.addEventListener('input', (e) => {
       const k = e.target.dataset.r;
       if (k === undefined) return;
-      if (rpNeedCp) { checkpoint(); rpNeedCp = false; }
-      R()[k] = k === 'label' ? e.target.value.slice(0, 24) : e.target.value;
+      if (k === 'label') {
+        // like the tab rename: trimmed, and an emptied field keeps the last label
+        const label = cut(e.target.value.trim(), 24);
+        if (!label || label === R().label) return;
+        if (rpNeedCp) { checkpoint(); rpNeedCp = false; }
+        R().label = label;
+      } else {
+        if (rpNeedCp) { checkpoint(); rpNeedCp = false; }
+        R()[k] = e.target.value;
+      }
       save();
       if (k === 'label') { renderHeader(); renderRoster(); } // roster shows "Dead <label>"
     });
@@ -2698,6 +2920,7 @@
     drop.addEventListener('dragleave', () => drop.classList.remove('over'));
     drop.addEventListener('drop', (e) => {
       e.preventDefault(); e.stopPropagation(); drop.classList.remove('over');
+      if (internalDrag) return; // a row portrait dragged onto the preview is not a new screenshot
       const f = [...e.dataTransfer.files].find((x) => x.type.startsWith('image/'));
       if (f) loadImportImage(f);
     });
@@ -2720,7 +2943,7 @@
         row.include = e.target.checked; div.classList.toggle('off', !row.include);
         imp.rows.forEach((_, i) => updateImportRowMeta(i));
       }
-      if (e.target.dataset.dead !== undefined) row.dead = e.target.checked;
+      if (e.target.dataset.dead !== undefined) { row.dead = e.target.checked; row.deadTouched = true; }
       updateImportButtons();
     });
     ['#calX', '#calY', '#calS'].forEach((id) => $(id).addEventListener('input', onCalChange));
@@ -2728,7 +2951,7 @@
     $('#calReset').onclick = () => {
       imp.cal = Object.assign({}, GGDParse.DEFAULT_CAL);
       imp.layout = 'auto';
-      syncCalUI(); onCalChange();
+      syncCalUI(); syncLayoutUI(); onCalChange();
     };
     $('#importNew').onclick = () => applyImport('new');
     $('#importUpdate').onclick = () => applyImport('update');
@@ -2751,6 +2974,8 @@
       const items = e.clipboardData ? [...e.clipboardData.items] : [];
       const it = items.find((x) => x.kind === 'file' && x.type.startsWith('image/'));
       if (!it) return;
+      // pasting into a text field: its text wins when the clipboard has text as well as a picture
+      if (isTyping(e) && items.some((x) => x.kind === 'string' && x.type === 'text/plain')) return;
       e.preventDefault();
       openImport(it.getAsFile());
     });
@@ -2769,6 +2994,9 @@
     // capture phase: the board's drop handler stops propagation, so a bubbling listener
     // would never see it and the hint would stay up
     window.addEventListener('drop', hideDropHint, true);
+    // dragend never arrives when the drop re-renders its source (a roster row placed on the map), so
+    // the internal flag is also cleared once the drop has been handled
+    window.addEventListener('drop', () => setTimeout(() => { internalDrag = false; }), true);
     // dragend fires on the source after any drop, so the internal flag is cleared last
     window.addEventListener('dragend', () => { hideDropHint(); internalDrag = false; }, true);
     window.addEventListener('drop', (e) => {
@@ -2776,23 +3004,29 @@
       e.preventDefault();
       const f = [...e.dataTransfer.files];
       const img = f.find((x) => x.type.startsWith('image/'));
-      const json = f.find((x) => x.name.endsWith('.json'));
+      const json = f.find((x) => /\.json$/i.test(x.name) || x.type === 'application/json');
       if (img) openImport(img);
       else if (json) loadJson(json);
+      else if (f.length) toast(t('toast.dropUnknown'));
     });
 
     // keyboard
     document.addEventListener('keydown', (e) => {
       // a held drag (draw, move, link, erase) is committed to the board it started on: no shortcuts until release
       if (drag && drag.type !== 'pan') return;
-      if ((e.ctrlKey || e.metaKey) && !isTyping(e)) {
+      // a dialog is on top: undo/redo would change the board behind it (and under a pending rename)
+      if ((e.ctrlKey || e.metaKey) && !isTyping(e) && !document.querySelector('dialog[open]')) {
         const k = e.key.toLowerCase();
         if (k === 'z' && !e.shiftKey) { e.preventDefault(); return undo(); }
         if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); return redo(); }
         return;
       }
       if (isTyping(e) || document.querySelector('dialog[open]') || e.altKey) return;
-      if (e.code === 'Space') { e.preventDefault(); spaceHeld = true; svg.classList.add('panning'); return; }
+      if (e.code === 'Space') {
+        // Space still presses a focused button or ticks a focused checkbox
+        if (e.target.closest && e.target.closest('button, input, select, textarea, a, summary, [role=button]')) return;
+        e.preventDefault(); spaceHeld = true; svg.classList.add('panning'); return;
+      }
       const k = e.key.toLowerCase();
       const tools = { v: 'select', r: 'path', p: 'pen', l: 'link', b: 'pin', t: 'text', e: 'eraser' };
       if (k === 'g') return isNet() ? undefined : togglePlay();
@@ -2833,9 +3067,12 @@
       if (mine && JSON.stringify({ ...mine, roundIdx: 0 }) === JSON.stringify({ ...next, roundIdx: 0 })) return;
       const mapChanged = next.mapId !== S.mapId || !allMaps().some((m) => m.id === next.mapId);
       cancelDrag();
+      // an edit made here that hadn't been written yet: keep it as the one undo step, so Ctrl+Z brings it back
+      const unsaved = dirty ? JSON.stringify(S) : null;
       clearTimeout(saveTimer); dirty = false;
       S = next;
       undoStack.length = 0; redoStack.length = 0; // their snapshots predate the other tab's work
+      if (unsaved) { undoStack.push(unsaved); toast(t('toast.otherTab')); }
       for (const u of shotCache.values()) URL.revokeObjectURL(u);
       shotCache.clear(); // the other tab may have replaced a screenshot
       resetPlay();
@@ -2884,6 +3121,7 @@
     if (location.protocol === 'file:') $('#fileWarn').classList.remove('hidden');
     await loadCustomMaps();
     render();
+    if (!mapAvailable()) toast(t('toast.mapMissing', { name: mapName(currentMap()) }));
     pruneShots();
   }
   boot();
