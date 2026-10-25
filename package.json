@@ -1,6 +1,6 @@
 {
   "name": "prts",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "private": true,
   "description": "Local detective board for Goose Goose Duck meetings",
   "scripts": {

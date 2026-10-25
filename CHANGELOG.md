@@ -1,6 +1,6 @@
 # Update log / 更新日志
 
-## Unreleased
+## v1.2.4 (2026-10-25)
 
 ### English
 
