@@ -1,5 +1,23 @@
 # Update log / 更新日志
 
+## Unreleased
+
+### English
+
+**Chinese names.** Name reading now reads Simplified Chinese names, and names that mix Chinese with letters and digits. Latin-only names are still checked by the English reader.
+
+**Chat panel open.** Screenshots taken with the meeting chat open are now read correctly: the cards are smaller and wrap around the chat panel, and the import finds them, including who is dead. The layout is detected automatically; **Calibration → Layout** lets you pick it by hand.
+
+**Long names.** The full width of the name strip is read, so long names are no longer cut off. A role badge next to a name no longer turns into stray characters.
+
+### 中文
+
+**中文名字。** 名字识别现在可以读取简体中文名字，以及中文与字母、数字混合的名字。纯英文名字仍由英文识别再核对一遍。
+
+**聊天框打开时。** 聊天框打开时截的图现在也能正确识别：卡片变小并绕开聊天框排列，导入时能找到它们并识别谁已死亡。布局会自动判断；也可以在 **校准 → 布局** 中手动选择。
+
+**长名字。** 现在会读取整条名字栏，长名字不会再被截断。名字旁边的身份徽章也不会再被识别成多余的字符。
+
 ## v1.2.3 (2026-10-23)
 
 ### English

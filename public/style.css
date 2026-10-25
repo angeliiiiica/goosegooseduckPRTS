@@ -614,6 +614,8 @@ dialog::backdrop {
 .calib summary small { font-family: var(--font); font-weight: 400; font-size: 12px; letter-spacing: 0; }
 .calib-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-top: 8px; align-items: center; }
 .calib-grid label { display: grid; grid-template-columns: 64px 1fr 44px; gap: 6px; align-items: center; }
+.calib-grid label.cal-layout { grid-template-columns: 64px 1fr; }
+.calib-grid select { padding-top: 3px; padding-bottom: 3px; }
 .calib-grid output { font: 600 14px/1 var(--tech); font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; }
 .import-status { font-size: 13px; color: var(--muted); margin-bottom: 8px; padding-left: 10px; border-left: 2px solid var(--signal); }
 .import-rows { display: flex; flex-direction: column; gap: 4px; max-height: 60vh; overflow: auto; }

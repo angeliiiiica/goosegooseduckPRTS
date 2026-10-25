@@ -28,7 +28,7 @@
 
 ### 使用方法
 
-1. 会议期间截图，然后在页面上按 **Ctrl+V**，或把图片拖到页面上。
+1. 会议期间截图，然后在页面上按 **Ctrl+V**，或把图片拖到页面上。中文和英文名字都能识别，聊天框打开或关闭都可以。
 2. 检查识别出的名字，然后点击 **开始新对局**。
 3. 把玩家从列表拖到地图上他们被看到的位置。
 4. 下一次会议时，导入该次会议的截图并选择 **新会议**。每场会议都有独立的空白画板，并保留自己的截图。用 C1、C2… 标签或 `[` `]` 键切换会议。
@@ -66,7 +66,7 @@
 
 #### 框和卡片对不齐时
 
-导入窗口中有 **校准** 滑块。如果你的截图不是普通的 16:9 全屏截图，可以用它们调整。
+导入窗口中有 **校准** 滑块。如果你的截图不是普通的 16:9 全屏截图，可以用它们调整。程序会自动判断聊天框是否打开；判断错误时，可在 **布局** 中手动选择。
 
 ### 你的数据
 
@@ -77,7 +77,7 @@
 - 非官方粉丝工具，与鹅鸭杀的开发商无关，也未获其认可。
 - PRTS 这个名字和界面风格是向《明日方舟》致敬的粉丝作品。本工具与鹰角网络（Hypergryph）或悠星（Yostar）无关，也未获其认可。
 - 内置地图图片来自社区 Steam 指南 <https://steamcommunity.com/sharedfiles/filedetails/?id=2620700282>。
-- 名字识别使用 [tesseract.js](https://github.com/naptha/tesseract.js) 及其核心和英文语言数据，均采用 Apache License 2.0。详见 `public/vendor/LICENSES.md`。
+- 名字识别使用 [tesseract.js](https://github.com/naptha/tesseract.js) 及其核心、英文和简体中文语言数据，均采用 Apache License 2.0。详见 `public/vendor/LICENSES.md`。
 - 界面字体为 Indian Type Foundry 的 [Rajdhani](https://fonts.google.com/specimen/Rajdhani)，采用 SIL Open Font License 1.1。详见 `public/fonts/OFL.txt`。
 
 各版本的改动见 `CHANGELOG.md`。
@@ -110,7 +110,7 @@ Your browser opens at `http://localhost:7777`. To use another port, run `node se
 
 ### How to use
 
-1. During a meeting, take a screenshot and press **Ctrl+V** on the page, or drop the image onto it.
+1. During a meeting, take a screenshot and press **Ctrl+V** on the page, or drop the image onto it. Chinese and English names are both read, with the chat panel open or closed.
 2. Check the names that were read, then click **Start new game**.
 3. Drag players from the list onto the map where they were seen.
 4. At the next meeting, import that meeting's screenshot and choose **New conference**. Each conference gets its own clean board and keeps its screenshot. Switch between conferences with the C1, C2… tabs or the `[` `]` keys.
@@ -148,7 +148,7 @@ Other features:
 
 #### If the boxes don't line up with the cards
 
-The import window has **Calibration** sliders. Use them if your screenshot isn't a plain 16:9 full-screen capture.
+The import window has **Calibration** sliders. Use them if your screenshot isn't a plain 16:9 full-screen capture. Whether the chat panel is open is detected automatically; if it gets that wrong, pick it under **Layout**.
 
 ### Your data
 
@@ -159,7 +159,7 @@ Games are kept in your browser's local storage on this computer. Upgrading from 
 - Unofficial fan tool. It is not affiliated with or endorsed by the makers of Goose Goose Duck.
 - The PRTS name and the interface style are a fan tribute to *Arknights*. This tool is not affiliated with or endorsed by Hypergryph or Yostar.
 - The built-in map images come from the community Steam guide <https://steamcommunity.com/sharedfiles/filedetails/?id=2620700282>.
-- Name reading uses [tesseract.js](https://github.com/naptha/tesseract.js) and its core and English language data, all under the Apache License 2.0. See `public/vendor/LICENSES.md`.
+- Name reading uses [tesseract.js](https://github.com/naptha/tesseract.js) and its core, English and Simplified Chinese language data, all under the Apache License 2.0. See `public/vendor/LICENSES.md`.
 - The interface font is [Rajdhani](https://fonts.google.com/specimen/Rajdhani) by Indian Type Foundry, under the SIL Open Font License 1.1. See `public/fonts/OFL.txt`.
 
 See `CHANGELOG.md` for what changed in each version.

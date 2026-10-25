@@ -1929,19 +1929,21 @@
   // ======================================================================
   // screenshot import
   // ======================================================================
-  const imp = { img: null, slots: [], rows: [], runId: 0, loadId: 0, worker: null, workerAt: 0, status: null, cal: Object.assign({}, GGDParse.DEFAULT_CAL, LS.get(K.cal, {})) };
+  // layout: 'auto' or a GGDParse.LAYOUTS id picked by hand; detected: what 'auto' found on this image
+  const imp = { img: null, slots: [], rows: [], runId: 0, loadId: 0, workers: {}, status: null, layout: 'auto', detected: null, cal: Object.assign({}, GGDParse.DEFAULT_CAL, LS.get(K.cal, {})) };
 
   let calTimer = 0; // pending re-analysis after a calibration change
 
   function resetImport() {
     imp.runId++; imp.loadId++;
     clearTimeout(calTimer);
-    imp.img = null; imp.src = null; imp.slots = []; imp.rows = [];
+    imp.img = null; imp.src = null; imp.slots = []; imp.rows = []; imp.layout = 'auto'; imp.detected = null;
     const c = $('#importCanvas');
     c.width = 0; c.height = 0;
     $('#importEmpty').classList.remove('hidden');
     $('#importRows').innerHTML = '';
     setImportStatus('import.none');
+    syncLayoutUI();
   }
 
   function openImport(blob) {
@@ -1988,7 +1990,7 @@
   function analyzeImport() {
     if (!imp.img) return;
     imp.runId++; // the rows are rebuilt: stop any OCR still reading the old ones (runOcr bumps it again)
-    imp.slots = GGDParse.analyze(imp.img, imp.cal);
+    analyzeSlots();
     drawImportPreview();
     imp.rows = imp.slots.filter((s) => s.occupied).map((s) => ({
       slot: s.index, include: true, dead: s.dead, name: '', ocr: '', conf: null, snapped: null, touched: false,
@@ -2001,6 +2003,13 @@
       return;
     }
     runOcr();
+  }
+
+  /** Card slots for the current image, in the layout picked by hand or the one detected. */
+  function analyzeSlots() {
+    imp.detected = GGDParse.detectLayout(imp.img, imp.cal);
+    imp.slots = GGDParse.analyze(imp.img, imp.cal, imp.layout === 'auto' ? imp.detected : imp.layout);
+    syncLayoutUI();
   }
 
   function drawImportPreview() {
@@ -2094,43 +2103,58 @@
     div.querySelector('.i-meta').innerHTML = bits.join('');
   }
 
-  async function getWorker() {
-    if (!imp.worker) {
-      imp.workerAt = Date.now();
-      const p = imp.worker = (async () => {
-        const w = await Tesseract.createWorker('eng', 1, {
+  // chi_sim reads every name first: Chinese ones, and plain Latin ones nearly as well. A name it
+  // finds no Chinese in is read again by eng, kept to Latin letters, and both readers' passes vote.
+  // Heights are the name strip's height in OCR pixels, so a 1440p or 4K screenshot reads like a
+  // 1080p one; Chinese glyphs blur together when blown up as far as Latin ones take.
+  const OCR = {
+    chi_sim: { heights: [44, 58, 87], params: {} },
+    eng: {
+      heights: [56, 84, 112],
+      params: { tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_' },
+    },
+  };
+
+  async function getWorker(lang) {
+    if (!imp.workers[lang]) {
+      const p = imp.workers[lang] = (async () => {
+        const w = await Tesseract.createWorker(lang, 1, {
           workerPath: abs('vendor/tesseract/worker.min.js'),
           corePath: abs('vendor/core'),
           langPath: abs('vendor/lang'),
         });
-        await w.setParameters({
-          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_',
-          tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-        });
+        await w.setParameters(Object.assign({ tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE }, OCR[lang].params));
         return w;
       })();
-      p.catch(() => { if (imp.worker === p) imp.worker = null; }); // a failed load must not clear a newer one
+      p.startedAt = Date.now();
+      // a failed load must not clear a newer one
+      p.then(() => { p.ready = true; }, () => { if (imp.workers[lang] === p) imp.workers[lang] = null; });
     }
-    return imp.worker;
+    return imp.workers[lang];
   }
 
   async function runOcr() {
     const id = ++imp.runId;
     setImportStatus('import.loading');
-    let w, timer = 0, timedOut = false;
+    let chi, eng, timer = 0, timedOut = false;
     try {
       if (location.protocol === 'file:') throw new Error('file:// page');
-      w = await Promise.race([getWorker(), new Promise((_, rej) => { timer = setTimeout(() => { timedOut = true; rej(new Error('OCR load timeout')); }, 30000); })]);
+      [chi, eng] = await Promise.race([
+        Promise.all([getWorker('chi_sim'), getWorker('eng')]),
+        new Promise((_, rej) => { timer = setTimeout(() => { timedOut = true; rej(new Error('OCR load timeout')); }, 30000); }),
+      ]);
     } catch (e) {
-      // a timed-out load stays cached in imp.worker, so the next run reuses it instead of starting
+      // a timed-out load stays cached in imp.workers, so the next run reuses it instead of starting
       // (and leaking) another worker; a real load failure is cleared by getWorker itself. A load still
       // pending after two timeouts' worth is treated as hung: drop it so a retry starts fresh, and
       // terminate its worker should it ever come up.
       console.error(e);
-      const p = imp.worker;
-      if (timedOut && p && Date.now() - imp.workerAt >= 59000) {
-        imp.worker = null;
-        p.then((stale) => stale.terminate(), () => {});
+      for (const lang of Object.keys(OCR)) {
+        const p = imp.workers[lang];
+        if (timedOut && p && !p.ready && Date.now() - p.startedAt >= 59000) {
+          imp.workers[lang] = null;
+          p.then((stale) => stale.terminate(), () => {});
+        }
       }
       if (id !== imp.runId) return;
       setImportStatus(location.protocol === 'file:' ? 'import.needServer' : 'import.ocrFailed');
@@ -2140,20 +2164,31 @@
     } finally {
       clearTimeout(timer);
     }
+    /** Read one name strip at each of a language's heights; null once the run is stale. */
+    const read = async (w, lang, rect) => {
+      const results = [];
+      for (const px of OCR[lang].heights) {
+        const { bitmap } = GGDParse.nameBitmap(imp.img, rect, px / rect.h);
+        const { data } = await w.recognize(imageDataToCanvas(bitmap));
+        if (id !== imp.runId) return null;
+        results.push({ text: data.text, confidence: data.confidence });
+      }
+      return results;
+    };
     const known = knownNames().map((n) => n.toUpperCase());
     for (let i = 0; i < imp.rows.length; i++) {
       if (id !== imp.runId) return;
       const row = imp.rows[i];
-      const slot = imp.slots[row.slot];
+      const rect = imp.slots[row.slot].rects.name;
       setImportStatus('import.reading', { i: i + 1, n: imp.rows.length });
-      const results = [];
-      for (const up of [2, 3, 4]) {
-        const { bitmap } = GGDParse.nameBitmap(imp.img, slot.rects.name, up);
-        const { data } = await w.recognize(imageDataToCanvas(bitmap));
-        if (id !== imp.runId) return;
-        results.push({ text: data.text, confidence: data.confidence });
+      const results = await read(chi, 'chi_sim', rect);
+      if (!results) return;
+      let v = GGDParse.voteName(results);
+      if (!GGDParse.hasCJK(v.name)) {
+        const latin = await read(eng, 'eng', rect);
+        if (!latin) return;
+        v = GGDParse.voteName(results.concat(latin));
       }
-      const v = GGDParse.voteName(results);
       row.ocr = v.name;
       row.conf = v.confidence;
       const snapped = v.name ? GGDParse.snapName(v.name, known) : null;
@@ -2231,6 +2266,19 @@
       : t('toast.updated', { label: r.label, added, died }));
   }
 
+  function syncLayoutUI() {
+    const sel = $('#calLayout');
+    sel.value = imp.layout;
+    sel.options[0].textContent = imp.detected
+      ? t('import.layout.autoIs', { layout: t('import.layout.' + imp.detected) }) : t('import.layout.auto');
+  }
+  function onLayoutChange() {
+    imp.layout = $('#calLayout').value;
+    if (!imp.img) return syncLayoutUI();
+    clearTimeout(calTimer);
+    analyzeImport();
+  }
+
   function syncCalUI() {
     const c = imp.cal;
     $('#calX').value = c.offX; $('#calXv').textContent = c.offX;
@@ -2243,7 +2291,7 @@
     syncCalUI();
     if (!imp.img) return;
     imp.runId++; // OCR would read the new rects against the old rows; analyzeImport restarts it
-    imp.slots = GGDParse.analyze(imp.img, imp.cal);
+    analyzeSlots();
     drawImportPreview();
     clearTimeout(calTimer);
     calTimer = setTimeout(() => { if ($('#importDlg').open) analyzeImport(); }, 450);
@@ -2676,8 +2724,10 @@
       updateImportButtons();
     });
     ['#calX', '#calY', '#calS'].forEach((id) => $(id).addEventListener('input', onCalChange));
+    $('#calLayout').addEventListener('change', onLayoutChange);
     $('#calReset').onclick = () => {
       imp.cal = Object.assign({}, GGDParse.DEFAULT_CAL);
+      imp.layout = 'auto';
       syncCalUI(); onCalChange();
     };
     $('#importNew').onclick = () => applyImport('new');
@@ -2814,6 +2864,7 @@
     renderRoleList();
     render();
     renderImportStatus();
+    syncLayoutUI();
     imp.rows.forEach((_, i) => updateImportRowMeta(i));
     updateImportButtons();
     renderPromptText();

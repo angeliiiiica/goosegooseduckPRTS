@@ -4,17 +4,35 @@
 (function (root) {
   'use strict';
 
-  // Card grid measured on a 1920x1080 meeting screen.
-  const LAYOUT = {
-    refW: 1920, refH: 1080,
-    cols: 4, rows: 4,
-    x0: 147, y0: 224,      // top-left card
-    w: 326, h: 178,        // card size
-    dx: 400, dy: 210,      // pitch
-    name: { x: 8, y: 144, w: 276, h: 28 },   // name strip text area (relative to card)
-    icon: { x: 2, y: 18, w: 120, h: 120 },   // portrait square (relative to card)
-    xmark: { x: 104, y: 8, w: 136, h: 132 }, // where the red death X is drawn
+  // Card grids measured on a 1920x1080 meeting screen. All rects relative to the card.
+  //  grid: chat closed, 4x4 cards.
+  //  chat: chat panel open on the right; smaller cards, 4 in the top row then 3 per row.
+  const LAYOUTS = {
+    grid: {
+      refW: 1920, refH: 1080,
+      x0: 147, y0: 224,      // top-left card
+      w: 326, h: 178,        // card size
+      dx: 400, dy: 210,      // pitch
+      pos: (i) => [i % 4, Math.floor(i / 4)],
+      strip: { x: 4, y: 142, w: 318, h: 34 },   // whole name strip
+      name: { x: 8, y: 144, w: 312, h: 28 },    // name text area
+      icon: { x: 2, y: 18, w: 120, h: 120 },    // portrait square
+      xmark: { x: 104, y: 8, w: 136, h: 132 },  // where the red death X is drawn
+    },
+    chat: {
+      refW: 1920, refH: 1080,
+      x0: 74, y0: 202,
+      w: 264, h: 150,
+      dx: 346, dy: 175.6,
+      pos: (i) => (i < 4 ? [i, 0] : [(i - 4) % 3, 1 + Math.floor((i - 4) / 3)]),
+      strip: { x: 4, y: 115, w: 256, h: 30 },
+      name: { x: 6, y: 117, w: 254, h: 28 },
+      icon: { x: 0, y: 8, w: 104, h: 104 },
+      xmark: { x: 80, y: 4, w: 110, h: 106 },
+    },
   };
+  const SLOTS = 16;
+  const LAYOUT = LAYOUTS.grid;
 
   const DEFAULT_CAL = { offX: 0, offY: 0, scale: 1 };
 
@@ -29,23 +47,23 @@
   }
 
   /** All 16 card rectangles in screenshot pixel space. */
-  function cardRects(W, H, cal) {
+  function cardRects(W, H, cal, layout) {
+    const L = LAYOUTS[layout] || LAYOUT;
     const { s, ox, oy } = transform(W, H, cal);
     const out = [];
-    for (let r = 0; r < LAYOUT.rows; r++) {
-      for (let c = 0; c < LAYOUT.cols; c++) {
-        const x = ox + (LAYOUT.x0 + c * LAYOUT.dx) * s;
-        const y = oy + (LAYOUT.y0 + r * LAYOUT.dy) * s;
-        const sub = (k) => ({
-          x: x + LAYOUT[k].x * s, y: y + LAYOUT[k].y * s,
-          w: LAYOUT[k].w * s, h: LAYOUT[k].h * s,
-        });
-        out.push({
-          index: r * LAYOUT.cols + c, row: r, col: c,
-          card: { x, y, w: LAYOUT.w * s, h: LAYOUT.h * s },
-          name: sub('name'), icon: sub('icon'), xmark: sub('xmark'),
-        });
-      }
+    for (let i = 0; i < SLOTS; i++) {
+      const [c, r] = L.pos(i);
+      const x = ox + (L.x0 + c * L.dx) * s;
+      const y = oy + (L.y0 + r * L.dy) * s;
+      const sub = (k) => ({
+        x: x + L[k].x * s, y: y + L[k].y * s,
+        w: L[k].w * s, h: L[k].h * s,
+      });
+      out.push({
+        index: i, row: r, col: c,
+        card: { x, y, w: L.w * s, h: L.h * s },
+        name: sub('name'), icon: sub('icon'), xmark: sub('xmark'), strip: sub('strip'),
+      });
     }
     return out;
   }
@@ -99,6 +117,34 @@
     return out;
   }
 
+  /** Clear ink blobs that can't be part of the name: specks, and blobs cut by the crop edge
+   *  such as the strip's border lines, a role badge hanging over the right end or a label
+   *  poking in from below. Glyphs sit inside the crop with a margin, so they rarely touch an edge. */
+  function dropStrayBlobs(ink, w, h, minArea) {
+    const seen = new Uint8Array(w * h), stack = [];
+    for (let start = 0; start < w * h; start++) {
+      if (!ink[start] || seen[start]) continue;
+      const blob = [];
+      let x0 = w, x1 = 0, y0 = h, y1 = 0;
+      seen[start] = 1; stack.push(start);
+      while (stack.length) {
+        const p = stack.pop(); blob.push(p);
+        const x = p % w, y = (p / w) | 0;
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+        if (x > 0 && ink[p - 1] && !seen[p - 1]) { seen[p - 1] = 1; stack.push(p - 1); }
+        if (x < w - 1 && ink[p + 1] && !seen[p + 1]) { seen[p + 1] = 1; stack.push(p + 1); }
+        if (y > 0 && ink[p - w] && !seen[p - w]) { seen[p - w] = 1; stack.push(p - w); }
+        if (y < h - 1 && ink[p + w] && !seen[p + w]) { seen[p + w] = 1; stack.push(p + w); }
+      }
+      const edges = (x0 === 0) + (x1 === w - 1) + (y0 === 0) + (y1 === h - 1);
+      const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+      const stray = blob.length < minArea
+        || (edges && (edges >= 2 || bw > 1.5 * h || bh < 0.35 * h));
+      if (stray) for (const p of blob) ink[p] = 0;
+    }
+  }
+
   /** Name strip -> upscaled, binarised black-on-white bitmap for OCR.
    *  Live cards: dark text on white. Dead cards: light text on dark. */
   function nameBitmap(img, rect, upscale) {
@@ -124,10 +170,14 @@
       const between = wB * wF * (mB - mF) * (mB - mF);
       if (between > best) { best = between; thr = t; }
     }
-    for (let i = 0; i < d.length; i += 4) {
+    const ink = new Uint8Array(w * h);
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
       const L = lum(d, i);
-      const ink = lightBg ? L < thr : L > thr;
-      const v = ink ? 0 : 255;
+      ink[p] = (lightBg ? L < thr : L > thr) ? 1 : 0;
+    }
+    dropStrayBlobs(ink, w, h, 1.5 * upscale * upscale);
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+      const v = ink[p] ? 0 : 255;
       d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
     }
     // white padding helps tesseract with tight crops
@@ -139,9 +189,37 @@
     return { bitmap: P, lightBg };
   }
 
+  /** A live card's name strip: one flat colour (text is the minority) clearly
+   *  brighter than the portrait just above it. Empty slots and stray background fail. */
+  function looksLikeStrip(img, rc) {
+    const { x0, y0, x1, y1 } = clampRect(img, rc.strip);
+    const d = img.data, W = img.width;
+    const hist = new Array(16).fill(0);
+    let n = 0;
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) { hist[Math.min(15, lum(d, (y * W + x) * 4) >> 4)]++; n++; }
+    }
+    if (!n) return false;
+    let mode = 0;
+    for (let b = 1; b < 16; b++) if (hist[b] > hist[mode]) mode = b;
+    const flat = (hist[mode] + (hist[mode - 1] || 0) + (hist[mode + 1] || 0)) / n;
+    const above = regionStats(img, { x: rc.strip.x, y: rc.strip.y - rc.strip.h * 0.6, w: rc.strip.w, h: rc.strip.h * 0.4 });
+    return flat > 0.55 && mode * 16 + 8 - above.mean > 50;
+  }
+
+  /** Which card layout the screenshot uses: the one whose name strips line up with more cards. */
+  function detectLayout(img, cal) {
+    let best = 'grid', bestN = -1;
+    for (const id of Object.keys(LAYOUTS)) {
+      const n = cardRects(img.width, img.height, cal, id).filter((rc) => looksLikeStrip(img, rc)).length;
+      if (n > bestN) { best = id; bestN = n; }
+    }
+    return best;
+  }
+
   /** Classify every slot. Returns [{index, occupied, dead, rects, stats}] */
-  function analyze(img, cal) {
-    return cardRects(img.width, img.height, cal).map((rc) => {
+  function analyze(img, cal, layout) {
+    return cardRects(img.width, img.height, cal, layout).map((rc) => {
       const iconS = regionStats(img, rc.icon);
       const nameS = regionStats(img, rc.name);
       const xS = regionStats(img, rc.xmark);
@@ -154,9 +232,13 @@
     });
   }
 
-  /** Normalise OCR output into a player name. */
+  const CJK = /[\u3400-\u9fff\uf900-\ufaff]/;
+
+  /** Normalise OCR output into a player name: Latin letters, digits, _ and Chinese characters.
+   *  Spaces are dropped (tesseract puts them between Chinese characters). */
   function cleanName(s) {
-    return (s || '').toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 16);
+    return Array.from((s || '').normalize('NFKC').toUpperCase())
+      .filter((ch) => /[A-Z0-9_]/.test(ch) || CJK.test(ch)).join('').slice(0, 20);
   }
 
   /** Pick a name from several OCR passes: sum confidence per candidate. */
@@ -193,11 +275,14 @@
       const d = levenshtein(name, k);
       if (d < bd) { bd = d; best = k; }
     }
-    const tol = name.length <= 4 ? 1 : 2;
+    // a Chinese character carries more than a letter: a 2-character name must match exactly
+    const tol = CJK.test(name) ? (name.length <= 2 ? 0 : name.length <= 5 ? 1 : 2) : name.length <= 4 ? 1 : 2;
     return best !== null && bd <= tol ? best : null;
   }
 
-  const api = { voteName, levenshtein, snapName, LAYOUT, DEFAULT_CAL, transform, cardRects, regionStats, crop, nameBitmap, analyze, cleanName };
+  const hasCJK = (s) => CJK.test(s);
+
+  const api = { hasCJK, voteName, levenshtein, snapName, LAYOUT, LAYOUTS, DEFAULT_CAL, detectLayout, transform, cardRects, regionStats, crop, nameBitmap, analyze, cleanName };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GGDParse = api;
 })(typeof self !== 'undefined' ? self : this);
